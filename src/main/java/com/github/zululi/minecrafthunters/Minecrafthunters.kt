@@ -1,17 +1,20 @@
 package com.github.zululi.minecrafthunters
 
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.board
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.gamestart
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunter
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.startsec
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
+import org.bukkit.Bukkit
+import org.bukkit.ChatColor
+import org.bukkit.Material
+import org.bukkit.Sound
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
+import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import com.github.zululi.minecrafthunters.Minecrafthunters.Main.gamestart
-import com.github.zululi.minecrafthunters.Minecrafthunters.Main.startsec
-import com.github.zululi.minecrafthunters.Minecrafthunters.Main.board
-import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunter
-import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
-import org.bukkit.*
-import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
@@ -21,7 +24,8 @@ import org.bukkit.event.player.*
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.scoreboard.DisplaySlot
-import org.bukkit.scoreboard.Team
+import java.util.*
+import kotlin.collections.ArrayList
 
 
 class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
@@ -47,9 +51,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         hunter?.setAllowFriendlyFire(false)
         survivor?.setAllowFriendlyFire(false)
         hunter?.color = ChatColor.RED
-        survivor?.color = ChatColor.BLUE
+        survivor?.color = ChatColor.GREEN
         hunter?.prefix = "${ChatColor.RED}[H] "
-        survivor?.prefix = "${ChatColor.AQUA}[S] "
+        survivor?.prefix = "${ChatColor.GREEN}[S] "
 
     }
 
@@ -124,11 +128,21 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     @EventHandler
     fun playerdeathed(e: PlayerDeathEvent) {
         val player = e.entity
+        if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter"){
+
+        }else if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor"){
+            hunter?.addEntry(player.name)
+            for (hunter in board?.getTeam("survivor")!!.entries) {
+
+            }
+        }
+
+
+
+
         object : BukkitRunnable() {
             override fun run() {
                 e.entity.spigot().respawn()
-                player.sendMessage(player.name)
-
             }
         }.runTaskLater(this, 1L)
     }
@@ -138,8 +152,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         for (player in Bukkit.getOnlinePlayers()) {
             val team2 = board?.getTeam("survivor")?.entries
             for (survivor in team2.toString()) {
-                Bukkit.getPlayer(survivor.toString())?.sendMessage("a")
-                Bukkit.broadcastMessage(team2.toString())
             }
 
         }
@@ -148,20 +160,46 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     @EventHandler
     fun chatevent(e: AsyncPlayerChatEvent) {
         val player = e.player
-        val message = e.message
-        //val team: Team? = Bukkit.getScoreboardManager()?.mainScoreboard?.getEntryTeam(player.name)
+        if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter"){
 
-        val team: Team? = board?.getEntryTeam(player.name)
-        if (team != null) {
-            if (player == board?.getTeam("hunter"))
-                player.sendMessage("H")
-            player.sendMessage("${ChatColor.RED}[H] $player ${ChatColor.GREEN}:${ChatColor.RESET}" + message)
-        } else {
-            if (player == board?.getTeam("survivor")) {
-                player.sendMessage("S")
-                player.sendMessage("${ChatColor.RED}[S] $player ${ChatColor.GREEN}:${ChatColor.RESET}" + message)
+            for (hunter in board?.getTeam("hunter")!!.entries) {
+                Bukkit.getPlayer(hunter)?.sendMessage("${ChatColor.RED}${player.name}${ChatColor.GREEN} : ${ChatColor.RESET}${e.message}")
+                e.isCancelled = true
+            }
+        }else if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor"){
+
+            for (hunter in board?.getTeam("survivor")!!.entries) {
+                Bukkit.getPlayer(hunter)?.sendMessage("${ChatColor.GREEN}${player.name}${ChatColor.GREEN} : ${ChatColor.RESET}${e.message}")
+                e.isCancelled = true
             }
         }
+    }
+    @EventHandler
+    fun clickitem(e:PlayerInteractEvent){
+        val playerlist = ArrayList<String>()
+        val player = e.player
+        val item = e.item?.type
+        val click = e.action
+        if (item == Material.COMPASS && click == Action.RIGHT_CLICK_AIR) {
+            for (all in Bukkit.getOnlinePlayers()) {
+                if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter"){
+                    for (survivor2 in board?.getTeam("survivor")!!.entries) {
+                        playerlist.add(survivor2.toString())
+                    }
+                }
+            }
+            playerlist.shuffle();
+            val chengeplayer = playerlist[1]
+            if (chengeplayer != null) {
+                player.sendMessage("change target to $chengeplayer")
+                player.compassTarget = Bukkit.getPlayer(chengeplayer)?.location!!
+            }else {
+                player.sendMessage("...")
+            }
+
+
+        }
+
     }
 
 
@@ -231,7 +269,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     0->{
                     }
                     1->{
-
                     }
                 }
             }
@@ -241,7 +278,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun prescoreboard(){
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("pre")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("pre","Dummy")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}Minecraft hunters ${ChatColor.GRAY}0.0.1"
+        prescore?.displayName = "${ChatColor.DARK_PURPLE}Minecraft hunters ${ChatColor.GRAY}0.0.2"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
         prescore?.getScore("${ChatColor.GOLD}     サーバー人数: ${Bukkit.getOnlinePlayers().size}")?.score = 0
     }
@@ -249,10 +286,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun gamescoreboard() {
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game","Dummy")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}Minecraft hunters ${ChatColor.GRAY}0.0.1"
+        prescore?.displayName = "${ChatColor.DARK_PURPLE}Minecraft hunters ${ChatColor.GRAY}0.0.2"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
-        prescore?.getScore("${ChatColor.AQUA}     残り人数: ${hunter?.size}")?.score = 1
-        prescore?.getScore("${ChatColor.RED}     ハンター: ${survivor?.size}")?.score = 0
+        prescore?.getScore("${ChatColor.GREEN}     残り人数: ${survivor?.size}")?.score = 1
+        prescore?.getScore("${ChatColor.RED}     ハンター: ${hunter?.size}")?.score = 0
     }
 
 
