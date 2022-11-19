@@ -1,7 +1,11 @@
-name: Minecrafthunters
+name: Manhunt
 version: '${project.version}'
 main: com.github.zululi.minecrafthunters.Minecrafthunters
 api-version: 1.19
 commands:
   start:
     description: start the game.
+  g:
+    description: global chat
+  settimer:
+    description: a
