@@ -844,8 +844,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         val canportal = e.blocks
         val world = e.world.name
 
+        hozon.clear()
         hozon.addAll(canportal)
-        val hozon2 = hozon[0].location.block
+
+        val hozon2 = hozon[0].block
         when (world) {
             "world" -> {
                 Bukkit.broadcastMessage("${ChatColor.GREEN}ワールドの" + hozon2.x.toString() + "," + hozon2.y + "," + hozon2.z + "にネザーポータルが生成されました。")
@@ -1147,33 +1149,48 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun prescoreboard(){
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("pre")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("pre","Dummy" , "aaa")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.1"
+        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.2"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
         prescore?.getScore("${ChatColor.GOLD}サーバー人数: ${Bukkit.getOnlinePlayers().size}")?.score = 0
     }
     private fun gamescoreboard() {
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game","Dummy" , "aaa")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.1"
+        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.2"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
         prescore?.getScore("${ChatColor.GREEN}残り人数: ${survivor?.size}")?.score = 11
         prescore?.getScore("${ChatColor.RED}ハンター: ${hunter?.size}")?.score = 10
         prescore?.getScore("${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score = 12
         prescore?.getScore("${ChatColor.RED}${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score = 9
-        prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-        if (portal in 1..5) {
+
+        if (portal == 1) {
+            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
             prescore?.getScore(portalhozon[0])?.score = 7
         }
-        if (portal in 2.. 5) {
+        if (portal == 2) {
+            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+            prescore?.getScore(portalhozon[0])?.score = 7
             prescore?.getScore(portalhozon[1])?.score = 6
         }
-        if (portal in 3.. 5) {
+        if (portal == 3) {
+            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+            prescore?.getScore(portalhozon[0])?.score = 7
+            prescore?.getScore(portalhozon[1])?.score = 6
             prescore?.getScore(portalhozon[2])?.score = 5
         }
-        if (portal in 4.. 5) {
+        if (portal == 4) {
+            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+            prescore?.getScore(portalhozon[0])?.score = 7
+            prescore?.getScore(portalhozon[1])?.score = 6
+            prescore?.getScore(portalhozon[2])?.score = 5
             prescore?.getScore(portalhozon[3])?.score = 4
         }
-        if (portal in 5.. 5) {
+        if (portal >= 5) {
+            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+            prescore?.getScore(portalhozon[0])?.score = 7
+            prescore?.getScore(portalhozon[1])?.score = 6
+            prescore?.getScore(portalhozon[2])?.score = 5
+            prescore?.getScore(portalhozon[3])?.score = 4
             prescore?.getScore(portalhozon[4])?.score = 3
         }
         if (endportal){
