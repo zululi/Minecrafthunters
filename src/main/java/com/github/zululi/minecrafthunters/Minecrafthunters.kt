@@ -18,6 +18,7 @@ import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorclear
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hozon
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunterplayer
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.killsranking
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalhozon
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portal
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalplace
@@ -83,6 +84,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         var hunterplayer = 0
         var survivorplayer = 99
         var arplayer = 99
+        var killsranking = mutableMapOf<UUID,Int>()
+
 
     }
 
@@ -146,6 +149,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         arrive?.unregister()
         deathed?.unregister()
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("hp")?.unregister()
+        Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("kills")?.unregister()
+
         for (player in Bukkit.getBannedPlayers()){
             Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "pardon ${player.name}")
         }
@@ -154,6 +159,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     @EventHandler
     fun onjoinplayer(e: PlayerJoinEvent) {
         val player = e.player
+        player.removePotionEffect(PotionEffectType.GLOWING)
         player.addPotionEffect(PotionEffect(PotionEffectType.NIGHT_VISION, 99999999, 1, true))
         player.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 99, false))
 
@@ -180,7 +186,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     fun item(e: PlayerDropItemEvent) {
         val player = e.player
         val item = e.itemDrop
-        if (item.name == "COMPASS") {
+        if (item.name == "Compass") {
 
             item.remove()
             player.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 0.5f, 1f)
@@ -189,7 +195,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             player.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 0.5f, 1f)
         }
 
-        item.itemStack.itemMeta
         when (item.itemStack.itemMeta?.lore.toString()) {
             "[${ChatColor.GOLD}SoulBound]" -> {
                 when (item.name) {
@@ -220,9 +225,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     }
                 }
             }
-        }
-        if (item.itemStack == ItemStack(Material.COMPASS)) {
-            e.isCancelled = true
         }
     }
 
@@ -432,12 +434,16 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     @EventHandler
     fun deathevent(e: PlayerDeathEvent) {
         val player = e.entity
+        val killer = e.entity.killer?.uniqueId
         val death = e.deathMessage
+        if (killer != null) {
+            killsranking[killer] = killsranking[killer]?.plus(1)?:1
+        }
         if (player.world.name == "world_the_end" && player.scoreboard.getEntryTeam(player.name)?.name == "survivor" && death?.contains(
                 "place"
             ) == true
         ) {
-            e.deathMessage = "${ChatColor.GREEN}${player.name}は復活しました。"
+            e.deathMessage = "${ChatColor.GREEN}${player.name}はエンドでの落下死のためリスポーンしました。"
             player.sendMessage("${ChatColor.GREEN}エンドでの落下死のためリスポーンしました。")
         } else if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor") {
             hunter?.addEntry(player.name)
@@ -464,6 +470,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             object : BukkitRunnable() {
                 override fun run() {
                     deathed?.addEntry(player.name)
+                    player.world.strikeLightningEffect(player.location)
+                    player.kickPlayer("${ChatColor.RED}死亡したためbanされました。")
                     Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "ban " + player.name+ " ${ChatColor.RED}死亡したためbanされました。")
                 }
             }.runTaskLater(this, 10L)
@@ -555,15 +563,14 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     if (location2 == null) {
                         player.sendMessage("${ChatColor.RED}村が見つかりませんでした(´・ω・`)")
                     } else {
-                        val x = location2.blockX
-                        val z = location2.blockZ
-                        val playerx = player.location.blockX
-                        val playerz = player.location.blockZ
-                        val diffarencex = x - playerx
-                        val diffarencez = z - playerz
-                        val distance = diffarencex * diffarencex + diffarencez * diffarencez
-                        val result = sqrt(distance.toDouble())
-                        player.sendMessage("${ChatColor.GREEN}村: " + location2.blockX + " ~ " + location2.blockZ + "  (残り${result.toInt()}ブロック)")
+                       // val x = location2.blockX
+                       // val z = location2.blockZ
+                       // val playerx = player.location.blockX
+                       // val playerz = player.location.blockZ
+                       // val diffarencex = x - playerx
+                       // val diffarencez = z - playerz
+                       // val distance = diffarencex * diffarencex + diffarencez * diffarencez
+                        //val result = sqrt(distance.toDouble())
                     }
                 } else if (e.player.world.name == "world_nether") {
                     player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
@@ -711,18 +718,18 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
 
                 }
 
-                val location2 = player.world.locateNearestStructure(player.location, StructureType.VILLAGE, 32, false)
-                if (location2 != null) {
-                    val x = location2.blockX
-                    val z = location2.blockZ
-                    val playerx = player.location.blockX
-                    val playerz = player.location.blockZ
-                    val diffarencex = x - playerx
-                    val diffarencez = z - playerz
-                    val distance = diffarencex * diffarencex + diffarencez * diffarencez
-                    val result = sqrt(distance.toDouble())
-                    player.sendMessage("${ChatColor.GREEN}村: " + location2.blockX + " ~ " + location2.blockZ + "  (残り${result.toInt()}ブロック)\n${ChatColor.GRAY}コンパスには反映されません")
-                }
+//                val location2 = player.world.locateNearestStructure(player.location, StructureType.VILLAGE, 32, false)
+//                if (location2 != null) {
+//                    val x = location2.blockX
+//                    val z = location2.blockZ
+//                    val playerx = player.location.blockX
+//                    val playerz = player.location.blockZ
+//                    val diffarencex = x - playerx
+//                    val diffarencez = z - playerz
+//                    val distance = diffarencex * diffarencex + diffarencez * diffarencez
+//                val result = sqrt(distance.toDouble())
+//                   player.sendMessage("${ChatColor.GREEN}村: " + location2.blockX + " ~ " + location2.blockZ + "  (残り${result.toInt()}ブロック)\n${ChatColor.GRAY}コンパスには反映されません")
+//                }
 
                 player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
             }
@@ -742,6 +749,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             "WOODEN_PICKAXE" -> {
                 val im = player.inventory.itemInMainHand.itemMeta
                 im!!.addEnchant(Enchantment.DIG_SPEED, 2, true)
+
                 im.isUnbreakable = true
                 player.inventory.itemInMainHand.itemMeta = im
             }
@@ -1041,52 +1049,50 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                             Bukkit.broadcastMessage("${ChatColor.GOLD}試合開始!")
                             for (player in Bukkit.getOnlinePlayers()) {
                                 val all = Bukkit.getPlayer(player.name)
+                                killsranking = mutableMapOf(all!!.uniqueId to 0)
                                 val woodensword = ItemStack(Material.STONE_SWORD)
                                 val metadatasword = woodensword.itemMeta
                                 metadatasword?.isUnbreakable = true
                                 val l0: MutableList<String> = ArrayList()
                                 l0.add("${ChatColor.GOLD}SoulBound")
+                                metadatasword?.addEnchant(Enchantment.VANISHING_CURSE, 2, true)
                                 metadatasword?.lore = (l0)
                                 woodensword.itemMeta = metadatasword
-                                all?.inventory?.setItem(0, woodensword)
+                                all.inventory.setItem(0, woodensword)
 
                                 val woodenpickaxe = ItemStack(Material.STONE_PICKAXE)
                                 val metadatapickaxe = woodenpickaxe.itemMeta
                                 metadatapickaxe?.isUnbreakable = true
+                                metadatapickaxe?.addEnchant(Enchantment.VANISHING_CURSE, 2, true)
                                 val l1: MutableList<String> = ArrayList()
                                 l1.add("${ChatColor.GOLD}SoulBound")
                                 metadatapickaxe?.lore = (l1)
                                 woodenpickaxe.itemMeta = metadatapickaxe
-                                all?.inventory?.setItem(1, woodenpickaxe)
+                                all.inventory.setItem(1, woodenpickaxe)
 
                                 val woodenaxe = ItemStack(Material.STONE_AXE)
                                 val metadataaxe = woodenaxe.itemMeta
-                                val modifier = AttributeModifier(
-                                    UUID.randomUUID(),
-                                    "generic.attackDamage",
-                                    2.0,
-                                    AttributeModifier.Operation.ADD_NUMBER,
-                                    EquipmentSlot.HAND
-                                )
-                                metadataaxe?.addAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE, modifier)
+                                metadataaxe?.addEnchant(Enchantment.VANISHING_CURSE, 2, true)
+
                                 metadataaxe?.isUnbreakable = true
                                 val l2: MutableList<String> = ArrayList()
                                 l2.add("${ChatColor.GOLD}SoulBound")
                                 metadataaxe?.lore = (l2)
                                 woodenaxe.itemMeta = metadataaxe
-                                all?.inventory?.setItem(2, woodenaxe)
+                                all.inventory.setItem(2, woodenaxe)
 
 
                                 val woodenshovel = ItemStack(Material.STONE_SHOVEL)
                                 val metadatashovel = woodenshovel.itemMeta
+                                metadatashovel?.addEnchant(Enchantment.VANISHING_CURSE, 2, true)
                                 metadatashovel?.isUnbreakable = true
                                 val l3: MutableList<String> = ArrayList()
                                 l3.add("${ChatColor.GOLD}SoulBound")
                                 metadatashovel?.lore = (l3)
                                 woodenshovel.itemMeta = metadatashovel
-                                all?.inventory?.setItem(3, woodenshovel)
+                                all.inventory.setItem(3, woodenshovel)
 
-                                all?.inventory?.setItem(4, ItemStack(Material.BREAD, 64))
+                                all.inventory.setItem(4, ItemStack(Material.BREAD, 64))
                             }
                             for(x in -10 .. 10) {
                                 for (z in -10..10) {
@@ -1360,7 +1366,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                 }
                 if (arplayer == 1){
                     val player = arrive!!.players
-                    Bukkit.broadcastMessage("${ChatColor.GOLD}${player}が優勝しました。")
+                    Bukkit.broadcastMessage("${ChatColor.GOLD}${player}が優勝しました。\n↑治りませんでした。")
                     for (p in Bukkit.getOnlinePlayers()){
                         p.playSound(p.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
                         p.playSound(p.location,Sound.ENTITY_FIREWORK_ROCKET_LAUNCH,1f,1.0f)
@@ -1392,6 +1398,23 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun end(){
         Bukkit.broadcastMessage("${ChatColor.YELLOW}10秒後に初期地点にTPします。")
 
+        val ranking: MutableMap<Int?, String> = TreeMap { m: Int?, n: Int? ->
+            m!!.compareTo(
+                n!!
+            ) * -1
+        }
+
+        for (name in killsranking.keys) {
+            ranking[killsranking[name]] = name.toString()
+        }
+        for (player in Bukkit.getOnlinePlayers()) {
+            var i = 1
+            for (nKey in ranking.keys) {
+                val playername = Bukkit.getPlayer(UUID.fromString(ranking[nKey]))?.name
+                player.sendMessage(ChatColor.YELLOW.toString() + i + ". " + ChatColor.AQUA + playername + ChatColor.WHITE + "(" + nKey + ")")
+                i += 1
+            }
+        }
         object : BukkitRunnable() {
             override fun run() {
                 for (player in Bukkit.getOnlinePlayers()){
