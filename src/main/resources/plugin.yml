@@ -11,3 +11,5 @@ commands:
     description: a
   qs:
     description: quick start
+  return:
+    description: a
