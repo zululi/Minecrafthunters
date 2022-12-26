@@ -1,6 +1,7 @@
 package com.github.zululi.minecrafthunters
 
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.admin
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arrive
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.board
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.deathed
@@ -16,9 +17,11 @@ import com.github.zululi.minecrafthunters.Minecrafthunters.Main.startsec
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorclear
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hozon
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunterplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalhozon
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portal
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalplace
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorplayer
 import net.md_5.bungee.api.ChatMessageType
 import net.md_5.bungee.api.chat.TextComponent
 import org.bukkit.*
@@ -77,6 +80,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         var portal = 0
         var portalplace = ""
         var endportal = false
+        var hunterplayer = 0
+        var survivorplayer = 99
+        var arplayer = 99
 
     }
 
@@ -90,7 +96,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         survivor?.setAllowFriendlyFire(false)
         hunter?.color = ChatColor.RED
         survivor?.color = ChatColor.GREEN
-        //admin?.color = ChatColor.GOLD
+        admin?.color = ChatColor.GOLD
         arrive?.color = ChatColor.LIGHT_PURPLE
         deathed?.color = ChatColor.GRAY
         admin?.prefix = "${ChatColor.GOLD}[A] "
@@ -101,6 +107,13 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         Bukkit.getWorld("world")?.setGameRule(GameRule.SPAWN_RADIUS, 0)
         Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
         Bukkit.getWorld("world")?.worldBorder?.size = 20.0
+        val hpscore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("hp","health" , "hp")
+        val kills = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("kills","playerKillCount" , "kills")
+        kills?.displaySlot = DisplaySlot.PLAYER_LIST
+
+        hpscore?.displayName = "${ChatColor.RED}❤"
+
+        hpscore?.displaySlot = DisplaySlot.BELOW_NAME
         object : BukkitRunnable() {
             override fun run() {
                 for (x1 in -10..10) {
@@ -132,11 +145,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         admin?.unregister()
         arrive?.unregister()
         deathed?.unregister()
-        for (player in Bukkit.getBanList(BanList.Type.NAME).banEntries){
-            Bukkit.broadcastMessage(player.toString())
-            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "pardon $player")
+        Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("hp")?.unregister()
+        for (player in Bukkit.getBannedPlayers()){
+            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "pardon ${player.name}")
         }
-        Bukkit.broadcastMessage("reloaded")
     }
 
     @EventHandler
@@ -149,6 +161,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         if (gamestart == 1 && player.scoreboard.getEntryTeam(player.name) == null) {
             hunter?.addEntry(player.name)
             player.inventory.setItem(8, ItemStack(Material.COMPASS))
+        }
+        if (gamestart in 2..3){
+            player.kickPlayer("${ChatColor.RED}現在参加することはできません。")
         }
     }
 
@@ -165,7 +180,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     fun item(e: PlayerDropItemEvent) {
         val player = e.player
         val item = e.itemDrop
-        if (item.name == "Material.COMPASS") {
+        if (item.name == "COMPASS") {
 
             item.remove()
             player.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 0.5f, 1f)
@@ -445,11 +460,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             }
         }.runTaskLater(this, 1L)
         if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
-            e.deathMessage = "${player.name}は死亡しました。"
+            e.deathMessage = "${ChatColor.DARK_RED}${player.name}は死亡しました。"
             object : BukkitRunnable() {
                 override fun run() {
                     deathed?.addEntry(player.name)
-                    Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "ban " + player.name+ " ${ChatColor.RED}死亡したためbanされました。");
+                    Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "ban " + player.name+ " ${ChatColor.RED}死亡したためbanされました。")
                 }
             }.runTaskLater(this, 10L)
         }
@@ -624,7 +639,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                         }
                     }
 
-                    "the_end" -> {
+                    "world_the_end" -> {
                         for (all in Bukkit.getOnlinePlayers()) {
                             if (all.world.name == "the_end") {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
@@ -1139,12 +1154,17 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 hour== 1 && min == 25&&sec== 0||hour==1&&min==27&&sec==0||hour == 1 && min ==28&&sec == 0||hour == 1 && min==29&&sec==0){
                             for (player in Bukkit.getOnlinePlayers()){
                                 player.sendMessage("${ChatColor.GOLD}ゲーム終了まで${ChatColor.RED}${30-min}${ChatColor.GOLD}分")
+                                player.playSound(player.location,Sound.UI_BUTTON_CLICK,1f,1f)
                             }
                         }else if (hour==1&&min==29&&sec in 45..60){
                             for (player in Bukkit.getOnlinePlayers()){
                                 player.sendMessage("${ChatColor.GOLD}ゲーム終了まで${ChatColor.RED}${60-sec}${ChatColor.GOLD}秒")
+                                player.playSound(player.location,Sound.UI_BUTTON_CLICK,1f,1f)
                             }
                         }
+                        gamescoreboard()
+                    }
+                    2->{
                         gamescoreboard()
                     }
                 }
@@ -1170,15 +1190,16 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                             Bukkit.getPlayer(all.name)?.getAttribute(Attribute.GENERIC_MAX_HEALTH)?.baseValue = 40.0
                         }
 
-                        if (survivor?.size == 0){
+                        if (survivorplayer == 0){
                             for (player in Bukkit.getOnlinePlayers()){
                                 player.playSound(player.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
                                 player.playSound(player.location,Sound.ENTITY_FIREWORK_ROCKET_LAUNCH,1f,1.0f)
                                 player.sendMessage("${ChatColor.GOLD}--------------------------------\n試合終了!\n${ChatColor.YELLOW}生存者がいなくなったため、ハンターの勝利です。${ChatColor.GOLD}--------------------------------\n")
                                 cancel()
                                 gamestart =2
-                                end()
+
                             }
+                            end()
                         }else if (hour == 1 && min == 30 && sec == 0){
                             for (player in Bukkit.getOnlinePlayers()){
                                 player.playSound(player.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
@@ -1186,8 +1207,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 player.sendMessage("${ChatColor.GOLD}--------------------------------\n試合終了!\n${ChatColor.YELLOW}制限時間になったため、ハンターの勝利です。${ChatColor.GOLD}--------------------------------\n")
                                 cancel()
                                 gamestart =2
-                                end()
                             }
+                            end()
                         }else if (survivorclear){
                             for (player in Bukkit.getOnlinePlayers()){
                                 player.playSound(player.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
@@ -1195,8 +1216,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 player.sendMessage("${ChatColor.GOLD}--------------------------------\n試合終了!\n${ChatColor.YELLOW}エンダードラゴンを倒したため、生存者の勝利です。${ChatColor.GOLD}--------------------------------\n")
                                 cancel()
                                 gamestart =2
-                                end()
                             }
+                            end()
                         }
                     }
                 }
@@ -1211,85 +1232,143 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         prescore?.getScore("${ChatColor.GOLD}サーバー人数: ${Bukkit.getOnlinePlayers().size}")?.score = 0
     }
     private fun gamescoreboard() {
-        Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
-        val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game","Dummy" , "aaa")
-        val hpscore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("hp","health" , "hp")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.3"
-        hpscore?.displayName = "${ChatColor.RED}❤"
-        prescore?.displaySlot = DisplaySlot.SIDEBAR
-        hpscore?.displaySlot = DisplaySlot.BELOW_NAME
-        prescore?.getScore("${ChatColor.GREEN}残り人数: ${survivor?.size}")?.score = 11
-        prescore?.getScore("${ChatColor.RED}ハンター: ${hunter?.size}")?.score = 10
-        prescore?.getScore("${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score = 12
-        prescore?.getScore("${ChatColor.RED}${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score = 9
+        when (gamestart) {
+            1-> {
+                var surplmin = 0
+                var hunplmin = 0
+                for (a in survivor!!.entries) {
+                    if (Bukkit.getPlayer(a) == null) {
+                        surplmin++
+                    }
+                }
+                for (a in hunter!!.entries) {
+                    if (Bukkit.getPlayer(a) == null) {
+                        hunplmin++
+                    }
+                }
 
-        if (portal == 1) {
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-            prescore?.getScore(portalhozon[0])?.score = 7
-        }
-        if (portal == 2) {
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-            prescore?.getScore(portalhozon[0])?.score = 7
-            prescore?.getScore(portalhozon[1])?.score = 6
-        }
-        if (portal == 3) {
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-            prescore?.getScore(portalhozon[0])?.score = 7
-            prescore?.getScore(portalhozon[1])?.score = 6
-            prescore?.getScore(portalhozon[2])?.score = 5
-        }
-        if (portal == 4) {
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-            prescore?.getScore(portalhozon[0])?.score = 7
-            prescore?.getScore(portalhozon[1])?.score = 6
-            prescore?.getScore(portalhozon[2])?.score = 5
-            prescore?.getScore(portalhozon[3])?.score = 4
-        }
-        if (portal >= 5) {
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
-            prescore?.getScore(portalhozon[0])?.score = 7
-            prescore?.getScore(portalhozon[1])?.score = 6
-            prescore?.getScore(portalhozon[2])?.score = 5
-            prescore?.getScore(portalhozon[3])?.score = 4
-            prescore?.getScore(portalhozon[4])?.score = 3
-        }
-        if (endportal){
-            prescore?.getScore("${ChatColor.LIGHT_PURPLE}${ChatColor.UNDERLINE}エンドポータル:")?.score = 2
-            prescore?.getScore("${ChatColor.LIGHT_PURPLE}"+portalplace)?.score = 1
-        }
-        if (min in 0..9 &&sec in 0..9  ){
-            prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : 0$min : 0$sec")?.score = 15
-        }else if (min in 0..9&&sec in 10..59){
-            prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : 0$min : $sec")?.score = 15
-        }else if (min in 9..59&& sec in 0..9){
-            prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : $min : 0$sec")?.score = 15
-        }else if (min in 10..59&&sec in 10..59){
-            prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : $min : $sec")?.score = 15
-        }
-        if (hour == 0 &&min in 0..2&&sec == 0) {
-            prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${3-min} : 00")?.score = 14
-        }else if(hour == 0 &&min in 0..2&&sec in 1..50){
-            prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${2-min} : ${60-sec}")?.score = 14
-        }else if (hour == 0 &&min in 0..2&&sec in 51..59){
-            prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${2-min} : 0${60-sec}")?.score = 14
-        }
-        if (hour == 0 &&min in 0..9&&sec == 0) {
-            prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${10-min} : 00")?.score = 13
-        }else if (hour == 0 &&min in 0..9&&sec in 1..50){
-            prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${9-min} : ${60-sec}")?.score = 13
-
-        }else if (hour == 0 &&min in 0..9&&sec in 51..59){
-            prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${9-min} : 0${60-sec}")?.score = 13
-        }
-        if (hour == 1&&sec == 0){
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29-min} : 00")?.score = 14
-        }else if(hour == 0 &&sec in 1..50){
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29-min} : ${60-sec}")?.score = 14
-        }else if (hour == 0 &&sec in 51..59){
-            prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29-min} : 0${60-sec}")?.score = 14
-        }
+                survivorplayer = survivor?.size?.minus(surplmin)!!
+                hunterplayer = hunter?.size?.minus(hunplmin)!!
 
 
+                Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
+                val prescore =
+                    Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
+
+                prescore?.displayName =
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.3"
+                prescore?.displaySlot = DisplaySlot.SIDEBAR
+                prescore?.getScore("${ChatColor.GREEN}残り人数: $survivorplayer")?.score = 11
+                prescore?.getScore("${ChatColor.RED}ハンター: $hunterplayer")?.score = 10
+                prescore?.getScore("${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score = 12
+                prescore?.getScore("${ChatColor.RED}${ChatColor.GOLD}${ChatColor.STRIKETHROUGH}                 ")?.score =
+                    9
+
+                if (portal == 1) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+                    prescore?.getScore(portalhozon[0])?.score = 7
+                }
+
+                if (portal == 2) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+                    prescore?.getScore(portalhozon[0])?.score = 7
+                    prescore?.getScore(portalhozon[1])?.score = 6
+                }
+                if (portal == 3) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+                    prescore?.getScore(portalhozon[0])?.score = 7
+                    prescore?.getScore(portalhozon[1])?.score = 6
+                    prescore?.getScore(portalhozon[2])?.score = 5
+                }
+
+                if (portal == 4) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+                    prescore?.getScore(portalhozon[0])?.score = 7
+                    prescore?.getScore(portalhozon[1])?.score = 6
+                    prescore?.getScore(portalhozon[2])?.score = 5
+                    prescore?.getScore(portalhozon[3])?.score = 4
+                }
+                if (portal >= 5) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ネザーポータル:")?.score = 8
+                    prescore?.getScore(portalhozon[0])?.score = 7
+                    prescore?.getScore(portalhozon[1])?.score = 6
+                    prescore?.getScore(portalhozon[2])?.score = 5
+                    prescore?.getScore(portalhozon[3])?.score = 4
+                    prescore?.getScore(portalhozon[4])?.score = 3
+                }
+
+                if (endportal) {
+                    prescore?.getScore("${ChatColor.LIGHT_PURPLE}${ChatColor.UNDERLINE}エンドポータル:")?.score = 2
+                    prescore?.getScore("${ChatColor.LIGHT_PURPLE}" + portalplace)?.score = 1
+                }
+                if (min in 0..9 && sec in 0..9) {
+                    prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : 0$min : 0$sec")?.score = 15
+                } else if (min in 0..9 && sec in 10..59) {
+                    prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : 0$min : $sec")?.score = 15
+                } else if (min in 9..59 && sec in 0..9) {
+                    prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : $min : 0$sec")?.score = 15
+                } else if (min in 10..59 && sec in 10..59) {
+                    prescore?.getScore("${ChatColor.GOLD}経過時間: $hour : $min : $sec")?.score = 15
+                }
+
+                if (hour == 0 && min in 0..2 && sec == 0) {
+                    prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${3 - min} : 00")?.score = 14
+                } else if (hour == 0 && min in 0..2 && sec in 1..50) {
+                    prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${2 - min} : ${60 - sec}")?.score = 14
+                } else if (hour == 0 && min in 0..2 && sec in 51..59) {
+                    prescore?.getScore("${ChatColor.GOLD}ハンター解放まで: ${2 - min} : 0${60 - sec}")?.score = 14
+                }
+                if (hour == 0 && min in 0..9 && sec == 0) {
+                    prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${10 - min} : 00")?.score = 13
+                } else if (hour == 0 && min in 0..9 && sec in 1..50) {
+                    prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${9 - min} : ${60 - sec}")?.score = 13
+
+                } else if (hour == 0 && min in 0..9 && sec in 51..59) {
+                    prescore?.getScore("${ChatColor.GOLD}満腹度回復終了まで: ${9 - min} : 0${60 - sec}")?.score = 13
+                }
+
+                if (hour == 1 && sec == 0) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29 - min} : 00")?.score = 14
+                } else if (hour == 1 && sec in 1..50) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29 - min} : ${60 - sec}")?.score =
+                        14
+                } else if (hour == 1 && sec in 51..59) {
+                    prescore?.getScore("${ChatColor.RED}${ChatColor.UNDERLINE}ゲーム終了まで: ${29 - min} : 0${60 - sec}")?.score =
+                        14
+                }
+
+            }
+            2->{
+                var arplmin = 0
+                for (a in arrive!!.entries) {
+                    if (Bukkit.getPlayer(a) == null) {
+                        arplmin++
+                    }
+                }
+                arplayer = arrive?.size?.minus(arplmin)!!
+                Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
+                val prescore =
+                    Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
+
+                prescore?.displayName =
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}2.2.3"
+                prescore?.displaySlot = DisplaySlot.SIDEBAR
+                prescore?.getScore("${ChatColor.YELLOW}${ChatColor.UNDERLINE}残り人数: $arplayer")?.score = 0
+                for (a in Bukkit.getOnlinePlayers()){
+                    a.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 999999999, 1, true))
+
+                }
+                if (arplayer == 1){
+                    val player = arrive!!.players
+                    Bukkit.broadcastMessage("${ChatColor.GOLD}${player}が優勝しました。")
+                    for (p in Bukkit.getOnlinePlayers()){
+                        p.playSound(p.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
+                        p.playSound(p.location,Sound.ENTITY_FIREWORK_ROCKET_LAUNCH,1f,1.0f)
+                    }
+                    gamestart = 3
+                }
+            }
+        }
     }
     private fun autowarifuri(){
         for (player in Bukkit.getOnlinePlayers()) {
@@ -1311,8 +1390,14 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         }
     }
     private fun end(){
+        Bukkit.broadcastMessage("${ChatColor.YELLOW}10秒後に初期地点にTPします。")
+
         object : BukkitRunnable() {
             override fun run() {
+                for (player in Bukkit.getOnlinePlayers()){
+                    player.teleport(Location(Bukkit.getWorld("world"),0.5,150.0,0.5))
+
+                }
                 for (player in  board?.getTeam("hunter")!!.entries){
                     arrive?.addEntry(player)
                     Bukkit.getPlayer(player)?.health = 40.0
@@ -1326,8 +1411,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                 for (player in board?.getTeam("arrive")!!.entries){
                     Bukkit.getPlayer(player)?.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 6, false))
                 }
+                Bukkit.getWorld("world")?.worldBorder?.size = 100.0
+
             }
-        }.runTaskLater(this, 100L)
+        }.runTaskLater(this, 200L)
     }
 
 
