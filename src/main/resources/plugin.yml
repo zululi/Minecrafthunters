@@ -13,3 +13,5 @@ commands:
     description: quick start
   return:
     description: a
+  test:
+    description: a
