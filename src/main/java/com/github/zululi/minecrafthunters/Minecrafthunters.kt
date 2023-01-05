@@ -3,7 +3,9 @@ package com.github.zululi.minecrafthunters
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.admin
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arrive
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.blocks
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.board
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.cooltime
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.deathed
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.endportal
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.gamestart
@@ -17,10 +19,12 @@ import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portal
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalhozon
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalplace
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.sec
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.serverre
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.startsec
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorclear
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorplayer
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.trackplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.yousaix
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.yousaiz
 import net.md_5.bungee.api.ChatMessageType
@@ -72,7 +76,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         var admin = board?.registerNewTeam("admin")
         var arrive = board?.registerNewTeam("arrive")
         var deathed = board?.registerNewTeam("deathed")
-
+        var serverre = 300
         val hozon = mutableListOf<BlockState>()
         val portalhozon = arrayListOf<String>()
         var portal = 0
@@ -82,6 +86,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         var survivorplayer = 99
         var arplayer = 99
         var killsranking = mutableMapOf<UUID,Int>()
+        var trackplayer = mutableMapOf<UUID,String>()
+        var cooltime = arrayListOf<String>()
+        var blocks = mutableMapOf<UUID,Int>()
 
 
     }
@@ -145,6 +152,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         deathed?.unregister()
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("hp")?.unregister()
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("kills")?.unregister()
+        Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
 
         for (player in Bukkit.getBannedPlayers()){
             Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "pardon ${player.name}")
@@ -158,8 +166,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         player.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 99, false))
 
         e.joinMessage = "${ChatColor.YELLOW}${player.name} joined."
-        if (gamestart == 1 && player.scoreboard.getEntryTeam(player.name) == null) {
-            hunter?.addEntry(player.name)
+        if (gamestart == 0 && player.scoreboard.getEntryTeam(player.name) == null) {
+            survivor?.addEntry(player.name)
             val compass = ItemStack(Material.COMPASS)
             val metadatacompass = compass.itemMeta
             metadatacompass?.isUnbreakable = true
@@ -170,8 +178,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             compass.itemMeta = metadatacompass
             player.inventory.setItem(8, compass)
         }
-        if (gamestart in 2..3){
-            player.kickPlayer("${ChatColor.RED}現在参加することはできません。")
+        if (gamestart in 2..3) {
+            deathed?.addEntry(player.name)
+            player.gameMode = GameMode.SPECTATOR
         }
     }
     @EventHandler
@@ -179,10 +188,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         val player = e.player
         if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
             deathed?.addEntry(player.name)
+            player.gameMode = GameMode.SPECTATOR
             e.quitMessage = "${ChatColor.DARK_RED}${player.name}は死亡しました。"
             player.world.strikeLightningEffect(player.location)
-            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "ban " + player.name+ " ${ChatColor.RED}サーバーから抜けたためbanされました。\n${ChatColor.GOLD}${ChatColor.UNDERLINE}Thank you for playing!")
-
 
         }
     }
@@ -202,9 +210,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
 
             item.remove()
             player.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 0.5f, 1f)
+            player.sendMessage("${ChatColor.GRAY}|コンパスを捨てました。|\n|再度入手するには/compassを実行してください。|")
         } else if (item.name == "Lodestone Compass") {
             item.remove()
             player.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 0.5f, 1f)
+            player.sendMessage("${ChatColor.GRAY}|コンパスを捨てました。|\n|再度入手するには/compassを実行してください。|")
         }
 
         when (item.itemStack.itemMeta?.lore.toString()) {
@@ -486,8 +496,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             object : BukkitRunnable() {
                 override fun run() {
                     deathed?.addEntry(player.name)
-                    player.kickPlayer("${ChatColor.RED}死亡したためbanされました。\n${ChatColor.GOLD}${ChatColor.UNDERLINE}Thank you for playing!")
-                    Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "ban " + player.name+ " ${ChatColor.RED}死亡したためbanされました。\n${ChatColor.GOLD}${ChatColor.UNDERLINE}Thank you for playing!")
+                   player.gameMode = GameMode.SPECTATOR
                 }
             }.runTaskLater(this, 10L)
         }
@@ -559,6 +568,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                         val distance = diffarencex * diffarencex + diffarencez * diffarencez
                         val result = sqrt(distance.toDouble())
 
+
                         if (e.player.inventory.getItem(8)!!
                                 .isSimilar(ItemStack(Material.COMPASS)) || e.player.inventory.getItem(8) != ItemStack(
                                 Material.AIR
@@ -575,15 +585,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                         player.world.locateNearestStructure(player.location, StructureType.VILLAGE, 32, false)
                     if (location2 == null) {
                         player.sendMessage("${ChatColor.RED}村が見つかりませんでした(´・ω・`)")
-                    } else {
-                       // val x = location2.blockX
-                       // val z = location2.blockZ
-                       // val playerx = player.location.blockX
-                       // val playerz = player.location.blockZ
-                       // val diffarencex = x - playerx
-                       // val diffarencez = z - playerz
-                       // val distance = diffarencex * diffarencex + diffarencez * diffarencez
-                        //val result = sqrt(distance.toDouble())
                     }
                 } else if (e.player.world.name == "world_nether") {
                     player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
@@ -643,6 +644,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
 
                                     playerlist.add(all.name)
+                                    playerlist.remove(trackplayer[player.uniqueId])
                                 }
                             }
                         }
@@ -654,6 +656,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
 
                                     playerlist.add(all.name)
+                                    playerlist.remove(trackplayer[player.uniqueId])
                                 }
                             }
                         }
@@ -661,10 +664,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
 
                     "world_the_end" -> {
                         for (all in Bukkit.getOnlinePlayers()) {
-                            if (all.world.name == "the_end") {
+                            if (all.world.name == "world_the_end") {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
-
                                     playerlist.add(all.name)
+                                    playerlist.remove(trackplayer[player.uniqueId])
                                 }
                             }
                         }
@@ -690,11 +693,21 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                                 Material.AIR
                             )
                         ) {
-                            val compass = e.player.inventory.getItem(8)?.itemMeta as CompassMeta
-                            compass.lodestone = Bukkit.getPlayer(chengeplayer)?.location
-                            compass.isLodestoneTracked = false
-                            e.player.inventory.getItem(8)?.itemMeta = compass
-                            player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}($plworld2${ChatColor.GRAY})")
+
+                            val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                            val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                            val playerx = player.location.blockX
+
+                            val playerz = player.location.blockZ
+                            val diffarencex = x?.minus(playerx)
+                            val diffarencez = z?.minus(playerz)
+                            val distance = diffarencez?.times(diffarencez)
+                                ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                            val result = sqrt(distance!!.toDouble())
+                            val result2 = result.roundToInt()
+                            trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                            player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
 
                         }
                     }
@@ -710,11 +723,24 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                             compass.lodestone = Bukkit.getPlayer(chengeplayer)?.location
                             compass.isLodestoneTracked = false
                             e.player.inventory.getItem(8)?.itemMeta = compass
-                            player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}($plworld2${ChatColor.GRAY})")
+                            val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                            val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                            val playerx = player.location.blockX
+
+                            val playerz = player.location.blockZ
+                            val diffarencex = x?.minus(playerx)
+                            val diffarencez = z?.minus(playerz)
+                            val distance = diffarencez?.times(diffarencez)
+                                ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                            val result = sqrt(distance!!.toDouble())
+                            val result2 = result.roundToInt()
+                            trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                            player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
                         }
                     }
 
-                    "the_end" -> {
+                    "world_the_end" -> {
                         val plworld2 = "${ChatColor.DARK_PURPLE}end"
                         if (e.player.inventory.getItem(8)!!
                                 .isSimilar(ItemStack(Material.COMPASS)) || e.player.inventory.getItem(8) != ItemStack(
@@ -725,39 +751,31 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                             compass.lodestone = Bukkit.getPlayer(chengeplayer)?.location
                             compass.isLodestoneTracked = false
                             e.player.inventory.getItem(8)?.itemMeta = compass
+                            val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                            val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                            val playerx = player.location.blockX
+
+                            val playerz = player.location.blockZ
+                            val diffarencex = x?.minus(playerx)
+                            val diffarencez = z?.minus(playerz)
+                            val distance = diffarencez?.times(diffarencez)
+                                ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                            val result = sqrt(distance!!.toDouble())
+                            val result2 = result.roundToInt()
+                            trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                            player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
+
                         }
-                        player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}($plworld2${ChatColor.GRAY})")
                     }
 
                 }
 
-//                val location2 = player.world.locateNearestStructure(player.location, StructureType.VILLAGE, 32, false)
-//                if (location2 != null) {
-//                    val x = location2.blockX
-//                    val z = location2.blockZ
-//                    val playerx = player.location.blockX
-//                    val playerz = player.location.blockZ
-//                    val diffarencex = x - playerx
-//                    val diffarencez = z - playerz
-//                    val distance = diffarencex * diffarencex + diffarencez * diffarencez
-//                val result = sqrt(distance.toDouble())
-//                   player.sendMessage("${ChatColor.GREEN}村: " + location2.blockX + " ~ " + location2.blockZ + "  (残り${result.toInt()}ブロック)\n${ChatColor.GRAY}コンパスには反映されません")
-//                }
 
                 player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
             }
         }
 
-//        if (item?.toString() == "COMPASS") {
-//            val test = player.inventory.all(Material.COMPASS).keys
-//
-//            for (int in test) {
-//                if (int != 8) {
-//                    player.inventory.setItem(int, ItemStack(Material.AIR))
-//                    player.inventory.setItem(8, ItemStack(Material.COMPASS))
-//                }
-//            }
-//        }
         when (item?.toString()) {
             "WOODEN_PICKAXE" -> {
                 val im = player.inventory.itemInMainHand.itemMeta
@@ -887,29 +905,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             }
         }
     }
-//    @EventHandler
-//    fun clickevent(e: InventoryClickEvent) {
-//        val slot = e.slot
-//        val currentitem = e.currentItem
-//        val player = e.whoClicked
-//
-//        if (slot == 8 && currentitem?.type.toString() == "COMPASS") {
-//            e.isCancelled = true
-//        }
-//
-//
-//
-//
-////        if (currentitem?.type.toString() == "AIR") {
-////
-////            if (player.inventory.getItem(8)?.type.toString() == "null") {
-////
-////                player.inventory.setItem(8, ItemStack(Material.COMPASS))
-////            }
-////        }
-//
-//
-//    }
     @EventHandler
     fun portalEvent(e: PortalCreateEvent) {
 
@@ -944,7 +939,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             endportal = true
         }
     }
-
     @EventHandler
     fun onPlayerAttack(e: EntityDamageByEntityEvent) {
         if (e.entity is Player ||e.entityType == EntityType.ARROW&& e.damager is Player) {
@@ -979,6 +973,96 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
             }
         }
     }
+    @EventHandler
+    fun move(e:PlayerMoveEvent){
+        val player = e.player
+        val trakingplayer = trackplayer[player.uniqueId]
+        if (player.name in cooltime){
+            return
+        }
+
+        val compass = e.player.inventory.getItem(8)?.itemMeta as CompassMeta
+        if (trakingplayer != null&&player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+            val x = Bukkit.getPlayer(trakingplayer)?.location?.blockX
+            val z = Bukkit.getPlayer(trakingplayer)?.location?.blockZ
+
+            val playerx = player.location.blockX
+
+            val playerz = player.location.blockZ
+            val diffarencex = x?.minus(playerx)
+            val diffarencez = z?.minus(playerz)
+            val distance = diffarencez?.times(diffarencez)
+                ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+            val result = sqrt(distance!!.toDouble())
+            val result2 = result.roundToInt()
+            blocks[e.player.uniqueId] = result2
+            compass.lodestone = Bukkit.getPlayer(trakingplayer.toString())?.location
+            compass.isLodestoneTracked = false
+            e.player.inventory.getItem(8)?.itemMeta = compass
+        }
+        if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor") {
+            if (e.player.world.name == "world") {
+                val location =
+                    player.world.locateNearestStructure(player.location, StructureType.STRONGHOLD, 32, false)
+                if (location == null) {
+                    return
+                } else {
+                    val playerx = player.location.blockX
+                    val playerz = player.location.blockZ
+                    val diffarencex = yousaix - playerx
+                    val diffarencez = yousaiz - playerz
+                    val distance = diffarencex * diffarencex + diffarencez * diffarencez
+                    val result = sqrt(distance.toDouble())
+                    blocks[e.player.uniqueId] = result.toInt()
+
+
+                    if (e.player.inventory.getItem(8)!!
+                            .isSimilar(ItemStack(Material.COMPASS)) || e.player.inventory.getItem(8) != ItemStack(
+                            Material.AIR
+                        )
+                    ) {
+
+                        compass.lodestone = location
+                        compass.isLodestoneTracked = false
+                        e.player.inventory.getItem(8)?.itemMeta = compass
+                    }
+                }
+            } else if (e.player.world.name == "world_nether") {
+                val location =
+                    player.world.locateNearestStructure(player.location, StructureType.NETHER_FORTRESS, 32, false)
+                if (location == null) {
+                    return
+                } else {
+                    val x = location.blockX
+                    val z = location.blockZ
+                    val playerx = player.location.blockX
+                    val playerz = player.location.blockZ
+                    val diffarencex = x - playerx
+                    val diffarencez = z - playerz
+                    val distance = diffarencex * diffarencex + diffarencez * diffarencez
+                    val result = sqrt(distance.toDouble())
+                    blocks[e.player.uniqueId] = result.toInt()
+                    if (e.player.inventory.getItem(8)!!
+                            .isSimilar(ItemStack(Material.COMPASS)) || e.player.inventory.getItem(8) != ItemStack(
+                            Material.AIR
+                        )
+                    ) {
+
+                        compass.lodestone = location
+                        compass.isLodestoneTracked = false
+                        e.player.inventory.getItem(8)?.itemMeta = compass
+                    }
+                }
+            }
+        }
+        cooltime.add(player.name)
+        object : BukkitRunnable() {
+            override fun run() {
+                cooltime.remove(player.name)
+            }
+        }.runTaskLater(this,20)
+    }
+
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         when(command.name){
@@ -1036,6 +1120,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
 
 
                 }
+            }
+            "compass"->{
+                Bukkit.getPlayer(sender.name)?.inventory?.addItem(ItemStack(Material.COMPASS))
+                sender.sendMessage("${ChatColor.GRAY}コンパスを渡しました。")
             }
             "return"->{
                 if (sender.isOp){
@@ -1235,6 +1323,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     2->{
                         gamescoreboard()
                     }
+                    3->{
+                        gamescoreboard()
+                        serverre--
+                    }
                 }
             }
         }.runTaskTimer(this, 0, 20)
@@ -1242,10 +1334,27 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun tick(){
         object : BukkitRunnable() {
             override fun run() {
-                for (all in Bukkit.getOnlinePlayers()){
-                    val component = TextComponent()
-                    component.text = "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ}"
-                    all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
+                for (all in Bukkit.getOnlinePlayers()) {
+                    if (all.scoreboard.getEntryTeam(all.name)?.name == "hunter" && trackplayer[all.uniqueId] != null){
+                        if (all.world == Bukkit.getPlayer(trackplayer[all.uniqueId].toString())!!.world) {
+
+                            val component = TextComponent()
+                            component.text =
+                                "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: 残り${blocks[all.uniqueId]}マス"
+                            all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
+                        }else{
+                            val component = TextComponent()
+                            component.text =
+                                "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: ${ChatColor.RED}${ChatColor.UNDERLINE}ここにはいません"
+                            all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
+                        }
+
+                    }else if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor"){
+                        val component = TextComponent()
+                        component.text =
+                            "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}残り${blocks[all.uniqueId]}マス"
+                        all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
+                    }
                 }
                 when(gamestart){
                     0->{
@@ -1295,7 +1404,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
     private fun prescoreboard(){
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("pre")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("pre","Dummy" , "aaa")
-        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}3.0.0"
+        prescore?.displayName = "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}4.0.0"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
         prescore?.getScore("${ChatColor.GOLD}サーバー人数: ${Bukkit.getOnlinePlayers().size}")?.score = 0
     }
@@ -1324,7 +1433,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
 
                 prescore?.displayName =
-                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}3.0.0"
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}4.0.0"
                 prescore?.displaySlot = DisplaySlot.SIDEBAR
                 prescore?.getScore("${ChatColor.GREEN}残り人数: $survivorplayer")?.score = 11
                 prescore?.getScore("${ChatColor.RED}ハンター: $hunterplayer")?.score = 10
@@ -1419,7 +1528,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
                     Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
 
                 prescore?.displayName =
-                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}3.0.0"
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}4.0.0"
                 prescore?.displaySlot = DisplaySlot.SIDEBAR
                 prescore?.getScore("${ChatColor.YELLOW}${ChatColor.UNDERLINE}残り人数: $arplayer")?.score = 0
                 for (a in Bukkit.getOnlinePlayers()){
@@ -1427,14 +1536,39 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
 
                 }
                 if (arplayer == 1){
-                    val player = arrive!!.players
-                    Bukkit.broadcastMessage("${ChatColor.GOLD}${player}が優勝しました。\n↑治りませんでした。")
+                    val player = arrive!!.entries //エントリーの全体
+                    var winner = ""
+                    for(b in player){
+                        for(a in Bukkit.getOfflinePlayers()){ //オンラインプレイヤーの全体
+                            if(!player.contains(a.name)) {
+                                winner = b
+                            }
+                        }
+                    }
+                    Bukkit.broadcastMessage("${ChatColor.GOLD}${winner}が優勝しました。")
+                    Bukkit.getPlayer(winner)?.gameMode = GameMode.CREATIVE
+                    Bukkit.getWorld("world")?.worldBorder?.size = 99999999.9
+
                     for (p in Bukkit.getOnlinePlayers()){
                         p.playSound(p.location,Sound.ENTITY_GENERIC_EXPLODE,1f,1.0f)
                         p.playSound(p.location,Sound.ENTITY_FIREWORK_ROCKET_LAUNCH,1f,1.0f)
                     }
                     gamestart = 3
                 }
+            }
+            3->{
+                Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
+                val prescore =
+                    Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
+
+                prescore?.displayName =
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}4.0.0"
+                prescore?.displaySlot = DisplaySlot.SIDEBAR
+                prescore?.getScore("${ChatColor.YELLOW}${ChatColor.UNDERLINE}サーバー停止まで: $serverre")?.score = 0
+                if (serverre==0) {
+                    Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "stop")
+                }
+
             }
         }
     }
