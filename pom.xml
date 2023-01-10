@@ -6,7 +6,7 @@
 
     <groupId>com.github.zululi</groupId>
     <artifactId>Manhunt</artifactId>
-    <version>4.0.0</version>
+    <version>4.0.1</version>
     <packaging>jar</packaging>
 
     <name>Manhunt</name>
