@@ -491,7 +491,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor {
         } else if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
             player.sendMessage("${ChatColor.GREEN}リスポーンしました。")
             e.keepInventory = true
-            e.drops.clear()
+            if (killer == null) {
+                e.drops.clear()
+            }
 
         }
         object : BukkitRunnable() {
