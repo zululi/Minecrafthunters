@@ -17,3 +17,6 @@ commands:
     description: a
   compass:
     description: a
+  playerstats:
+    description: a
+
