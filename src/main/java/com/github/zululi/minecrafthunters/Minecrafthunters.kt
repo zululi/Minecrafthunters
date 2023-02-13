@@ -1,6 +1,7 @@
 package com.github.zululi.minecrafthunters
 
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.admin
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arena
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.arrive
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.blocks
@@ -14,6 +15,11 @@ import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hozon
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunter
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.hunterplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.killsranking
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.leaderboardkill
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.leaderboardrank
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.leaderkills
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.leaderrank
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.lobby
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.min
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portal
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.portalhozon
@@ -24,6 +30,7 @@ import com.github.zululi.minecrafthunters.Minecrafthunters.Main.startsec
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivor
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorclear
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.survivorplayer
+import com.github.zululi.minecrafthunters.Minecrafthunters.Main.teleportcooldown
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.trackplayer
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.yousaix
 import com.github.zululi.minecrafthunters.Minecrafthunters.Main.yousaiz
@@ -46,6 +53,7 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.entity.*
 import org.bukkit.event.inventory.CraftItemEvent
+import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.PrepareItemCraftEvent
 import org.bukkit.event.player.*
 import org.bukkit.event.world.PortalCreateEvent
@@ -53,6 +61,7 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapedRecipe
 import org.bukkit.inventory.meta.CompassMeta
+import org.bukkit.inventory.meta.SkullMeta
 import org.bukkit.plugin.Plugin
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
@@ -61,13 +70,12 @@ import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.scoreboard.DisplaySlot
 import java.io.File
 import java.io.IOException
-import java.nio.channels.SelectionKey
 import java.util.*
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 
-class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
+class Minecrafthunters : JavaPlugin(), Listener, CommandExecutor, Plugin {
     object Main {
         var gamestart = 0
         var startsec = -999
@@ -96,13 +104,28 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         var trackplayer = mutableMapOf<UUID, String>()
         var cooltime = arrayListOf<String>()
         var blocks = mutableMapOf<UUID, Int>()
-
-
+        val lobby = WorldCreator("lobby").environment(World.Environment.NORMAL).createWorld()
+        val arena = WorldCreator("arena").environment(World.Environment.NORMAL).createWorld()
+        val leaderkills = mutableMapOf<String,Int>()
+        val leaderrank = mutableMapOf<String,Int>()
+        val leaderboardkill = mutableMapOf<Int,String>()
+        val leaderboardrank = mutableMapOf<Int,String>()
+        var teleportcooldown = mutableMapOf<UUID,Int>()
     }
 
 
     override fun onEnable() {
-        // Plugin startup logic
+        object : BukkitRunnable() {
+            override fun run() {
+                reloadleaderboard()
+            }
+        }.runTaskLater(this, 20)
+
+        for (player in Bukkit.getOnlinePlayers()) {
+            player.teleport(Location(lobby, 0.5,16.0,0.5))
+            player.gameMode = GameMode.ADVENTURE
+            teleportcooldown[player.uniqueId] = 10
+        }
 
         Bukkit.getPluginManager().registerEvents(this, this)
         sec()
@@ -119,9 +142,22 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         survivor?.prefix = "${ChatColor.GREEN}[S] "
         arrive?.prefix = "${ChatColor.LIGHT_PURPLE}[❤] "
         deathed?.prefix = "${ChatColor.GRAY}[♡] "
+
+        Bukkit.getServer().getWorlds().add(lobby);
+        Bukkit.getServer().getWorlds().add(arena);
+
+        if(Bukkit.getServer().getWorlds().add(lobby) == true)
+        {
+            System.out.println("" + lobby + "is loaded")
+            lobby?.time = 6000
+            lobby?.weatherDuration
+            lobby?.setGameRule(GameRule.DO_WEATHER_CYCLE,false)
+            lobby?.setGameRule(GameRule.DO_DAYLIGHT_CYCLE,false)
+        }
+
+
         Bukkit.getWorld("world")?.setGameRule(GameRule.SPAWN_RADIUS, 0)
-        Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
-        Bukkit.getWorld("world")?.worldBorder?.size = 20.0
+        Bukkit.getWorld("lobby")?.setSpawnLocation(0,16,0)
         val hpscore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("hp", "health", "hp")
         val kills =
             Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("kills", "playerKillCount", "kills")
@@ -130,28 +166,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         hpscore?.displayName = "${ChatColor.RED}❤"
 
         hpscore?.displaySlot = DisplaySlot.BELOW_NAME
-        object : BukkitRunnable() {
-            override fun run() {
-                for (x1 in -10..10) {
-                    val z1 = 10
-                    val x2 = 10
-                    for (z2 in -10..10) {
-                        val x3 = -10
-                        val z4 = -10
-                        val block = Bukkit.getWorld("world")?.getBlockAt(x1, 150, z1)
-                        val block2 = Bukkit.getWorld("world")?.getBlockAt(x2, 150, z2)
-                        val block3 = Bukkit.getWorld("world")?.getBlockAt(x3, 150, z2)
-                        val block4 = Bukkit.getWorld("world")?.getBlockAt(x1, 150, z4)
-                        val setblock = Material.getMaterial("GLASS")!!.createBlockData()
-                        block?.blockData = setblock
-                        block2?.blockData = setblock
-                        block3?.blockData = setblock
-                        block4?.blockData = setblock
-                    }
-                }
-                cancel()
-            }
-        }.runTaskTimer(this, 0, 0)
 
         //recipe setting
 
@@ -348,7 +362,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "01",
             " 1"
         )
-        netherite2.setIngredient('0', Material.NETHERITE_BLOCK)
+        netherite2.setIngredient('0', Material.ANCIENT_DEBRIS)
         netherite2.setIngredient('1', Material.STICK)
 
 
@@ -360,7 +374,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         )
         gapple.setIngredient('0', Material.GOLD_BLOCK)
         gapple.setIngredient('1', Material.DIAMOND)
-        gapple.setIngredient('2', Material.GOLDEN_APPLE)
+        gapple.setIngredient('2', Material.APPLE)
 
         val ironupgrade1 = ShapedRecipe(NamespacedKey(this, "ironhelmet"), encih)
         ironupgrade1.shape(
@@ -404,7 +418,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "010",
             "000"
         )
-        diamondupgrade1.setIngredient('0', Material.DIAMOND_BLOCK)
+        diamondupgrade1.setIngredient('0', Material.DIAMOND)
         diamondupgrade1.setIngredient('1', Material.DIAMOND_HELMET)
 
         val diamondupgrade2 = ShapedRecipe(NamespacedKey(this, "diamondchestplate"), encdc)
@@ -413,7 +427,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "010",
             "000"
         )
-        diamondupgrade2.setIngredient('0', Material.DIAMOND_BLOCK)
+        diamondupgrade2.setIngredient('0', Material.DIAMOND)
         diamondupgrade2.setIngredient('1', Material.DIAMOND_CHESTPLATE)
 
         val diamondupgrade3 = ShapedRecipe(NamespacedKey(this, "diamondleggings"), encdl)
@@ -422,7 +436,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "010",
             "000"
         )
-        diamondupgrade3.setIngredient('0', Material.DIAMOND_BLOCK)
+        diamondupgrade3.setIngredient('0', Material.DIAMOND)
         diamondupgrade3.setIngredient('1', Material.DIAMOND_LEGGINGS)
 
         val diamondupgrade4 = ShapedRecipe(NamespacedKey(this, "diamondboots"), encdb)
@@ -431,7 +445,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "010",
             "000"
         )
-        diamondupgrade4.setIngredient('0', Material.DIAMOND_BLOCK)
+        diamondupgrade4.setIngredient('0', Material.DIAMOND)
         diamondupgrade4.setIngredient('1', Material.DIAMOND_BOOTS)
 
         val ds = ShapedRecipe(NamespacedKey(this, "diamondsword"), encds)
@@ -440,7 +454,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             "010",
             "000"
         )
-        ds.setIngredient('0', Material.DIAMOND_BLOCK)
+        ds.setIngredient('0', Material.DIAMOND)
         ds.setIngredient('1', Material.DIAMOND_SWORD)
 
         val irons = ShapedRecipe(NamespacedKey(this, "ironsword"), encis)
@@ -484,9 +498,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("kills")?.unregister()
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("game")?.unregister()
 
-        for (player in Bukkit.getBannedPlayers()) {
-            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "pardon ${player.name}")
-        }
     }
 
     @EventHandler
@@ -538,14 +549,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     fun onjoinplayer(e: PlayerJoinEvent) {
         val player = e.player
         createplayerdata(player)
-
-        player.removePotionEffect(PotionEffectType.GLOWING)
-        player.addPotionEffect(PotionEffect(PotionEffectType.NIGHT_VISION, 99999999, 1, true))
-        player.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 99, false))
+        teleportcooldown[player.uniqueId] = 10
 
         e.joinMessage = "${ChatColor.YELLOW}${player.name} joined."
         if (gamestart == 0 && player.scoreboard.getEntryTeam(player.name) == null) {
-            survivor?.addEntry(player.name)
             val compass = ItemStack(Material.COMPASS)
             val metadatacompass = compass.itemMeta
             metadatacompass?.isUnbreakable = true
@@ -555,9 +562,24 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             metadatacompass?.lore = (l0)
             compass.itemMeta = metadatacompass
             player.inventory.setItem(8, compass)
+            player.teleport(Location(lobby,0.5,16.0,0.5))
+            player.gameMode = GameMode.ADVENTURE
         }
         if (gamestart == 1 && player.scoreboard.getEntryTeam(player.name) == null) {
-            hunter?.addEntry(player.name)
+            if (min in 0..2){
+                player.teleport(Location(Bukkit.getWorld("world"),0.5,150.0,0.5))
+                survivor?.addEntry(player.name)
+                player.gameMode = GameMode.SURVIVAL
+            }else{
+                player.teleport(Location(Bukkit.getWorld("world"),0.5,150.0,0.5))
+                hunter?.addEntry(player.name)
+                player.gameMode = GameMode.ADVENTURE
+            }
+            player.removePotionEffect(PotionEffectType.GLOWING)
+            player.addPotionEffect(PotionEffect(PotionEffectType.NIGHT_VISION, 99999999, 1, true))
+            player.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 99, false))
+
+
             val compass = ItemStack(Material.COMPASS)
             val metadatacompass = compass.itemMeta
             metadatacompass?.isUnbreakable = true
@@ -568,6 +590,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             compass.itemMeta = metadatacompass
             player.inventory.setItem(8, compass)
             killsranking = mutableMapOf(player.uniqueId to 0)
+
             val woodensword = ItemStack(Material.STONE_SWORD)
             val metadatasword = woodensword.itemMeta
             metadatasword?.isUnbreakable = true
@@ -614,8 +637,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         }
         if (gamestart in 2..3) {
             deathed?.addEntry(player.name)
+            player.teleport(Location(arena,17.5,12.00,11.5))
             player.gameMode = GameMode.SPECTATOR
         }
+
 
 
     }
@@ -636,52 +661,76 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     @EventHandler
     fun killedentity(e: EntityDeathEvent) {
         val entity = e.entity
-        val killer = e.entity.killer!!
+        val killer = e.entity.killer
         if (entity is EnderDragon) {
-            addxp(killer,50)
+            addxp(killer!!, 50)
             killer.sendMessage("${ChatColor.GOLD}+50Xp")
             survivorclear = true
 
         }
-        when (entity){
-            is Zombie->{
-            addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is Skeleton->{
-                addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is Creeper->{
-                addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is Blaze->{
-                addxp(killer,2)
-                killer.sendMessage("${ChatColor.GOLD}+2Xp")
-            }
-            is Piglin->{
-                addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is PigZombie->{
-                addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is WitherSkeleton->{
-                addxp(killer,1)
-                killer.sendMessage("${ChatColor.GOLD}+1Xp")
-            }
-            is Enderman->{
-                addxp(killer,2)
-                killer.sendMessage("${ChatColor.GOLD}+2Xp")
+        if (killer != null&& gamestart == 1) {
+            when (entity) {
+
+                is Zombie -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is Skeleton -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is Creeper -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is Blaze -> {
+                    addxp(killer, 2)
+                    killer.sendMessage("${ChatColor.GOLD}+2Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is Piglin -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is PigZombie -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is WitherSkeleton -> {
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
+                is Enderman -> {
+                    addxp(killer, 2)
+                    killer.sendMessage("${ChatColor.GOLD}+2Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+                is Spider ->{
+                    addxp(killer, 1)
+                    killer.sendMessage("${ChatColor.GOLD}+1Xp")
+                    checkrankup(killer,getrank(killer),getxp(killer))
+                }
+
             }
         }
 
     }
 
     @EventHandler
-    fun item(e: PlayerDropItemEvent) {
+    fun dropitem(e: PlayerDropItemEvent) {
         val player = e.player
         val item = e.itemDrop
         if (item.name == "Compass") {
@@ -748,21 +797,24 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     }
 
     @EventHandler
-    fun breakblock(e: BlockBreakEvent) {
+    fun blockbreakevent(e: BlockBreakEvent) {
         when (gamestart) {
             0 -> {
                 e.isCancelled = true
             }
 
             1 -> {
-                e.isCancelled = false
                 val block = e.block
                 val item = e.block.drops
                 val player = e.player
                 val blockplace = block.location
-                if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter" && hour == 0 && min in 0..2) {
-                    e.isCancelled = true
+                if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+                    if (hour == 0 && min in 0..2){
+                        e.isCancelled = true
+                        return
+                    }
                 }
+
 
                 for (i in item) {
                     when (e.block.type.toString()) {
@@ -888,6 +940,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val gi = ItemStack(Material.DIAMOND, random)
                             player.world.dropItemNaturally(blockplace, ItemStack(gi))
                             player.giveExp(20)
+                            addxp(player,1)
+                            player.sendMessage("${ChatColor.GOLD}+1Xp")
                         }
 
                         else -> {
@@ -904,14 +958,19 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     }
 
     @EventHandler
-    fun placeblock(e: BlockPlaceEvent) {
+    fun blockplaceevent(e: BlockPlaceEvent) {
         when (gamestart) {
             0 -> {
                 e.isCancelled = true
             }
 
             1 -> {
-                e.isCancelled = false
+                val player = e.player
+                if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+                    if (hour == 0 && min in 0..2){
+                        e.isCancelled = true
+                    }
+                }
             }
         }
     }
@@ -940,7 +999,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         val death = e.deathMessage
         if (killer != null) {
             killsranking[killer] = killsranking[killer]?.plus(1) ?: 1
-            killername?.inventory?.addItem(ItemStack(Material.GOLDEN_APPLE, 10))
+            killername?.inventory?.addItem(ItemStack(Material.GOLDEN_APPLE, 5))
         }
         if (player.world.name == "world_the_end" && player.scoreboard.getEntryTeam(player.name)?.name == "survivor" && death?.contains(
                 "place"
@@ -953,8 +1012,18 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             e.keepInventory = true
             if (killer != null) {
                 e.deathMessage =
-                    "${ChatColor.RED}${player.name}はハンターになりました。${ChatColor.RED}${killername?.name} ${ChatColor.RESET}-> ${ChatColor.GREEN}${player.name}"
-                killername?.sendMessage("${ChatColor.YELLOW}${player.name}を倒しました。${ChatColor.GOLD}+50Xp")
+                    "${ChatColor.RED}${player.name}はハンターになりました。"
+                object : BukkitRunnable() {
+                    override fun run() {
+
+                        for (all in Bukkit.getOnlinePlayers()){
+                            all.sendMessage("${ChatColor.GRAY}(${ChatColor.RED}${killername?.name} ${ChatColor.GRAY}-> ${ChatColor.GREEN}${player.name}${ChatColor.GRAY})")
+                        }
+                        killername?.sendMessage("${ChatColor.YELLOW}${player.name}を倒しました。${ChatColor.GOLD}+50Xp")
+                    }
+                }.runTaskLater(this, 2L)
+
+
                 setxp(killername!!, getxp(killername) + 50)
                 setkills(killername, getkills(killername) + 1)
 
@@ -968,17 +1037,34 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             player.sendMessage("${ChatColor.RED}死亡したため、ハンターになりました。")
             player.world.strikeLightningEffect(player.location)
         } else if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+            player.sendMessage("${ChatColor.GREEN}リスポーンしました。")
             if (killer != null) {
-                player.sendMessage("${ChatColor.GREEN}リスポーンしました。")
-                setxp(killername!!,getxp(killername)+20)
-                killername.sendMessage("${ChatColor.YELLOW}${player.name}を倒しました。${ChatColor.GOLD}+20Xp")
+                object : BukkitRunnable() {
+                    override fun run() {
+//                        for (all in Bukkit.getOnlinePlayers()){
+//                            all.sendMessage("${ChatColor.GRAY}(${ChatColor.GREEN}${killername?.name} ${ChatColor.GRAY}-> ${ChatColor.RED}${player.name}${ChatColor.GRAY})")
+//                        }
+                        setxp(killername!!, getxp(killername) + 20)
+                        killername.sendMessage("${ChatColor.YELLOW}${player.name}を倒しました。${ChatColor.GOLD}+20Xp")
+                    }
+                }.runTaskLater(this, 2L)
+
+
+
 
                 e.keepInventory = true
-            }else{
+            } else {
                 e.keepInventory = true
                 e.drops.clear()
             }
 
+        } else if (player.scoreboard.getEntryTeam(player.name)?.name == "deathed") {
+
+            object : BukkitRunnable() {
+                override fun run() {
+                    player.teleport(Location(arena,17.5,12.0,11.5))
+                }
+            }.runTaskLater(this, 2L)
         }
         object : BukkitRunnable() {
             override fun run() {
@@ -994,15 +1080,185 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 player.inventory.setItem(8, compass)
                 player.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 6, false))
                 player.addPotionEffect(PotionEffect(PotionEffectType.NIGHT_VISION, 9999999, 1, true))
+                val playerlist = arrayListOf<String>()
+                if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter"&& trackplayer[e.entity.uniqueId] == null) {
+
+                    when (player.world.name) {
+                        "world" -> {
+                            for (all in Bukkit.getOnlinePlayers()) {
+                                if (all.world.name == "world") {
+                                    if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
+
+                                        playerlist.add(all.name)
+                                        if (playerlist.size != 1) {
+                                            playerlist.remove(trackplayer[player.uniqueId])
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        "world_nether" -> {
+                            for (all in Bukkit.getOnlinePlayers()) {
+                                if (all.world.name == "world_nether") {
+                                    if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
+
+                                        playerlist.add(all.name)
+                                        if (playerlist.size != 1) {
+                                            playerlist.remove(trackplayer[player.uniqueId])
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        "world_the_end" -> {
+                            for (all in Bukkit.getOnlinePlayers()) {
+                                if (all.world.name == "world_the_end") {
+                                    if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
+                                        playerlist.add(all.name)
+                                        if (playerlist.size != 1) {
+                                            playerlist.remove(trackplayer[player.uniqueId])
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                playerlist.shuffle()
+
+                if (playerlist.isEmpty()) {
+                    if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+                        player.sendMessage("${ChatColor.RED}${player.world.name}にはプレイヤーがいないようです。")
+                    }
+                } else {
+                    val chengeplayer = playerlist[0]
+                    when (Bukkit.getPlayer(chengeplayer)?.world?.name) {
+
+                        "world" -> {
+                            "${ChatColor.GREEN}overworld"
+
+                            if (e.entity.inventory.getItem(8)!!
+                                    .isSimilar(ItemStack(Material.COMPASS)) || e.entity.inventory.getItem(8) != ItemStack(
+                                    Material.AIR
+                                )
+                            ) {
+
+                                val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                                val y = Bukkit.getPlayer(chengeplayer)?.location?.blockY
+                                val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                                val playerx = player.location.blockX
+                                val playery = player.location.blockY
+
+                                val playerz = player.location.blockZ
+                                val diffarencex = x?.minus(playerx)
+                                val diffarencez = z?.minus(playerz)
+                                val distance = diffarencez?.times(diffarencez)
+                                    ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
+                                val result = sqrt(distancef!!.toDouble())
+                                val result2 = result.roundToInt()
+                                trackplayer[e.entity.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                                player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
+
+                            }
+                        }
+
+                        "world_nether" -> {
+                            "${ChatColor.RED}nether"
+                            if (e.entity.inventory.getItem(8)!!
+                                    .isSimilar(ItemStack(Material.COMPASS)) || e.entity.inventory.getItem(8) != ItemStack(
+                                    Material.AIR
+                                )
+                            ) {
+                                val compass = e.entity.inventory.getItem(8)?.itemMeta as CompassMeta
+                                compass.lodestone = Bukkit.getPlayer(chengeplayer)?.location
+                                compass.isLodestoneTracked = false
+                                e.entity.inventory.getItem(8)?.itemMeta = compass
+                                val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                                val y = Bukkit.getPlayer(chengeplayer)?.location?.blockY
+                                val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                                val playerx = player.location.blockX
+                                val playery = player.location.blockY
+
+                                val playerz = player.location.blockZ
+                                val diffarencex = x?.minus(playerx)
+                                val diffarencez = z?.minus(playerz)
+                                val distance = diffarencez?.times(diffarencez)
+                                    ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
+                                val result = sqrt(distancef!!.toDouble())
+                                val result2 = result.roundToInt()
+                                trackplayer[e.entity.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                                player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
+                            }
+                        }
+
+                        "world_the_end" -> {
+                            "${ChatColor.DARK_PURPLE}end"
+                            if (e.entity.inventory.getItem(8)!!
+                                    .isSimilar(ItemStack(Material.COMPASS)) || e.entity.inventory.getItem(8) != ItemStack(
+                                    Material.AIR
+                                )
+                            ) {
+                                val compass = e.entity.inventory.getItem(8)?.itemMeta as CompassMeta
+                                compass.lodestone = Bukkit.getPlayer(chengeplayer)?.location
+                                compass.isLodestoneTracked = false
+                                e.entity.inventory.getItem(8)?.itemMeta = compass
+                                val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
+                                val y = Bukkit.getPlayer(chengeplayer)?.location?.blockY
+                                val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
+
+                                val playerx = player.location.blockX
+                                val playery = player.location.blockY
+
+                                val playerz = player.location.blockZ
+                                val diffarencex = x?.minus(playerx)
+                                val diffarencez = z?.minus(playerz)
+                                val distance = diffarencez?.times(diffarencez)
+                                    ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
+                                val result = sqrt(distancef!!.toDouble())
+                                val result2 = result.roundToInt()
+                                trackplayer[e.entity.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
+                                player.sendMessage("${ChatColor.YELLOW}${chengeplayer}の現在位置にターゲットしました。\n${ChatColor.GRAY}(残り$result2 マス${ChatColor.GRAY})")
+
+                            }
+                        }
+
+                    }
+
+
+                    player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
+                }
             }
         }.runTaskLater(this, 1L)
         if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
             e.deathMessage = "${ChatColor.DARK_RED}${player.name}は死亡しました。"
+            if (killer != null){
+                addxp(Bukkit.getPlayer(killername!!.name)!!,10)
+
+                object : BukkitRunnable() {
+                    override fun run() {
+                        for (all in Bukkit.getOnlinePlayers()){
+                            all.sendMessage("${ChatColor.GRAY}(${ChatColor.LIGHT_PURPLE} ${killername.name}${ChatColor.GRAY} -> ${ChatColor.GRAY}${player.name}${ChatColor.GRAY} )")
+                        }
+                        killername.sendMessage("${ChatColor.YELLOW}${player.name}を倒しました。${ChatColor.GOLD}+10Xp")
+                    }
+                }.runTaskLater(this, 2L)
+
+            }
             player.world.strikeLightningEffect(player.location)
             object : BukkitRunnable() {
                 override fun run() {
+
                     deathed?.addEntry(player.name)
                     player.gameMode = GameMode.SPECTATOR
+                    player.teleport(Location(arena,17.5,12.00,11.5))
                 }
             }.runTaskLater(this, 10L)
         }
@@ -1055,7 +1311,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     }
 
     @EventHandler
-    fun usingitem(e: PlayerInteractEvent) {
+    fun playerinteractevent(e: PlayerInteractEvent) {
         val playerlist = ArrayList<String>()
         val player = e.player
         val item = e.item?.type
@@ -1153,7 +1409,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
 
                                     playerlist.add(all.name)
-                                    playerlist.remove(trackplayer[player.uniqueId])
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                    }
                                 }
                             }
                         }
@@ -1165,7 +1423,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
 
                                     playerlist.add(all.name)
-                                    playerlist.remove(trackplayer[player.uniqueId])
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                    }
                                 }
                             }
                         }
@@ -1176,7 +1436,9 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             if (all.world.name == "world_the_end") {
                                 if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
                                     playerlist.add(all.name)
-                                    playerlist.remove(trackplayer[player.uniqueId])
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                    }
                                 }
                             }
                         }
@@ -1184,10 +1446,61 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 }
             }
 
+
+
+            if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
+                when (player.world.name) {
+                    "world" -> {
+                        for (all in Bukkit.getOnlinePlayers()) {
+                            if (all.world.name == "world") {
+                                if (all.scoreboard.getEntryTeam(all.name)?.name == "arrive") {
+
+                                    playerlist.add(all.name)
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                        playerlist.remove(player.name)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    "world_nether" -> {
+                        for (all in Bukkit.getOnlinePlayers()) {
+                            if (all.world.name == "world_nether") {
+                                if (all.scoreboard.getEntryTeam(all.name)?.name == "arrive") {
+
+                                    playerlist.add(all.name)
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                        playerlist.remove(player.name)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    "world_the_end" -> {
+                        for (all in Bukkit.getOnlinePlayers()) {
+                            if (all.world.name == "world_the_end") {
+                                if (all.scoreboard.getEntryTeam(all.name)?.name == "arrive") {
+                                    playerlist.add(all.name)
+                                    if (playerlist.size != 1) {
+                                        playerlist.remove(trackplayer[player.uniqueId])
+                                        playerlist.remove(player.name)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             playerlist.shuffle()
 
             if (playerlist.isEmpty()) {
                 if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
+                    player.sendMessage("${ChatColor.RED}${player.world.name}にはプレイヤーがいないようです。")
+                }else if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive"){
                     player.sendMessage("${ChatColor.RED}${player.world.name}にはプレイヤーがいないようです。")
                 }
             } else {
@@ -1205,7 +1518,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                         ) {
 
                             val x = Bukkit.getPlayer(chengeplayer)?.location?.blockX
-                            val y= Bukkit.getPlayer(chengeplayer)?.location?.blockY
+                            val y = Bukkit.getPlayer(chengeplayer)?.location?.blockY
                             val z = Bukkit.getPlayer(chengeplayer)?.location?.blockZ
 
                             val playerx = player.location.blockX
@@ -1216,7 +1529,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val diffarencez = z?.minus(playerz)
                             val distance = diffarencez?.times(diffarencez)
                                 ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
-                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(),2.0))
+                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
                             val result = sqrt(distancef!!.toDouble())
                             val result2 = result.roundToInt()
                             trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
@@ -1248,7 +1561,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val diffarencez = z?.minus(playerz)
                             val distance = diffarencez?.times(diffarencez)
                                 ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
-                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(),2.0))
+                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
                             val result = sqrt(distancef!!.toDouble())
                             val result2 = result.roundToInt()
                             trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
@@ -1279,7 +1592,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val diffarencez = z?.minus(playerz)
                             val distance = diffarencez?.times(diffarencez)
                                 ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
-                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(),2.0))
+                            val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
                             val result = sqrt(distancef!!.toDouble())
                             val result2 = result.roundToInt()
                             trackplayer[e.player.uniqueId] = Bukkit.getPlayer(chengeplayer)!!.name
@@ -1293,6 +1606,43 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
 
                 player.playSound(player.location, Sound.UI_BUTTON_CLICK, 1f, 1.0f)
             }
+        }
+        if (item == Material.COMPASS && click == Action.LEFT_CLICK_AIR&&player.scoreboard.getEntryTeam(player.name)?.name == "hunter"){
+            if (teleportcooldown[player.uniqueId]!! > 0){
+                when(teleportcooldown[player.uniqueId]?.rem(60)){
+                    in 0..9->{
+                        player.sendMessage("${ChatColor.RED}スキル再使用可能まで ${teleportcooldown[player.uniqueId]?.div(60)?.toInt()}:0${teleportcooldown[player.uniqueId]?.rem(
+                            60
+                        )}")
+                    }
+                    in 10..60->{
+                        player.sendMessage("${ChatColor.RED}スキル再使用可能まで ${teleportcooldown[player.uniqueId]?.div(60)?.toInt()}:${teleportcooldown[player.uniqueId]?.rem(
+                            60
+                        )}")
+                    }
+
+                }
+
+                Bukkit.getPlayer(player.name)?.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 1.0f)
+                return
+            }else {
+                val inv = Bukkit.createInventory(null, 9, "${ChatColor.GOLD}テレポート")
+                val gui = mutableMapOf<Int, ItemStack>()
+                var i = 1
+                for (hunter in board?.getTeam("hunter")!!.entries) {
+                    gui[i] = ItemStack(Material.PLAYER_HEAD)
+                    val meta = gui[i]?.itemMeta as SkullMeta
+                    meta.setOwningPlayer(Bukkit.getPlayer(hunter))
+                    meta.setDisplayName("${hunter}")
+                    gui[i]?.setItemMeta(meta)
+                    if (gui[i]?.itemMeta!!.displayName != player.name) {
+                        inv.addItem(gui[i])
+                    }
+                    i++
+                }
+                player.openInventory(inv)
+            }
+
         }
 
         when (item?.toString()) {
@@ -1423,6 +1773,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 im.isUnbreakable = true
                 player.inventory.itemInMainHand.itemMeta = im
             }
+
+
         }
     }
 
@@ -1521,7 +1873,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 val diffarencez = z?.minus(playerz)
                 val distance = diffarencez?.times(diffarencez)
                     ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
-                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(),2.0))
+                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
                 val result = sqrt(distancef!!.toDouble())
                 val result2 = result.roundToInt()
                 blocks[e.player.uniqueId] = result2
@@ -1529,6 +1881,30 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 compass.isLodestoneTracked = false
                 e.player.inventory.getItem(8)?.itemMeta = compass
             }
+
+            if (trakingplayer != null && player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
+                val x = Bukkit.getPlayer(trakingplayer)?.location?.blockX
+                val y = Bukkit.getPlayer(trakingplayer)?.location?.blockY
+                val z = Bukkit.getPlayer(trakingplayer)?.location?.blockZ
+
+                val playerx = player.location.blockX
+                val playery = player.location.blockY
+
+                val playerz = player.location.blockZ
+                val diffarencex = x?.minus(playerx)
+                val diffarencez = z?.minus(playerz)
+                val distance = diffarencez?.times(diffarencez)
+                    ?.let { (diffarencex?.times(diffarencex))!!.plus(it) }
+                val distancef = distance?.plus(Math.pow(y?.minus(playery)!!.toDouble(), 2.0))
+                val result = sqrt(distancef!!.toDouble())
+                val result2 = result.roundToInt()
+                blocks[e.player.uniqueId] = result2
+                compass.lodestone = Bukkit.getPlayer(trakingplayer.toString())?.location
+                compass.isLodestoneTracked = false
+                e.player.inventory.getItem(8)?.itemMeta = compass
+            }
+
+
             if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor") {
                 if (e.player.world.name == "world") {
                     val location =
@@ -1597,21 +1973,56 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         }.runTaskLater(this, 2)
     }
 
+    @EventHandler
+    fun inventoryclick(e:InventoryClickEvent){
+        val player = e.whoClicked
+        if (e.view.title == "${ChatColor.GOLD}テレポート"){
+            e.isCancelled = true
+            if (e.currentItem?.type ?: return == Material.PLAYER_HEAD) {
+                if (teleportcooldown[player.uniqueId]!! <= 0) {
+                    if (e.currentItem?.itemMeta != null) {
+                        player.sendMessage("${ChatColor.RED}${e.currentItem!!.itemMeta!!.displayName}${ChatColor.YELLOW}にテレポートしました。")
+                        player.teleport(Bukkit.getPlayer(e.currentItem!!.itemMeta!!.displayName)!!)
+                        Bukkit.getPlayer(player.name)
+                            ?.playSound(player.location, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f)
+                        teleportcooldown[player.uniqueId] = 300
+                    }
+                }
+            }
+        }
+    }
+
+
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         when (command.name) {
+            "reloadleaderboard"->{
+                if (sender.isOp) {
+                    reloadleaderboard()
+                }else{
+                    sender.sendMessage("${ChatColor.RED}権限がありません")
+                }
+            }
             "playerstats" -> {
 
                 if (args.isEmpty()) {
                     sender.sendMessage("${ChatColor.GOLD}-------${ChatColor.RED}${sender.name}${ChatColor.YELLOW}の情報${ChatColor.GOLD}-------")
                     sender.sendMessage("${ChatColor.YELLOW}ランク:${getrank(Bukkit.getPlayer(sender.name)!!)}")
-                    sender.sendMessage("${ChatColor.YELLOW}レベルアップまで:${getrankupremaining(getrank(Bukkit.getPlayer(sender.name)!!),getxp(Bukkit.getPlayer(sender.name)!!))}")
+                    sender.sendMessage(
+                        "${ChatColor.YELLOW}レベルアップまで:${
+                            getrankupremaining(
+                                getrank(Bukkit.getPlayer(sender.name)!!),
+                                getxp(Bukkit.getPlayer(sender.name)!!)
+                            )
+                        }"
+                    )
                     sender.sendMessage("${ChatColor.YELLOW}キル数:${getkills(Bukkit.getPlayer(sender.name)!!)}")
                     sender.sendMessage("${ChatColor.GOLD}-----------------------")
-                    Bukkit.getPlayer(sender.name)?.playSound(Bukkit.getPlayer(sender.name)?.location!!,Sound.ENTITY_ITEM_PICKUP,1.0f,1.0f)
+                    Bukkit.getPlayer(sender.name)
+                        ?.playSound(Bukkit.getPlayer(sender.name)?.location!!, Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f)
                     return false
                 }
-                if (args.size == 1){
+                if (args.size == 1) {
                     if (Bukkit.getPlayer(args[0])?.isOnline!!) {
                         sender.sendMessage("${ChatColor.GOLD}-------${ChatColor.RED}${args[0]}${ChatColor.YELLOW}の情報${ChatColor.GOLD}-------")
                         sender.sendMessage("${ChatColor.YELLOW}ランク:${getrank(Bukkit.getPlayer(args[0])!!)}")
@@ -1629,13 +2040,12 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                         sender.sendMessage("${ChatColor.YELLOW}キル数:${getkills(Bukkit.getPlayer(args[0])!!)}")
                         sender.sendMessage("${ChatColor.GOLD}-----------------------")
 
-                        Bukkit.getPlayer(sender.name)?.playSound(Bukkit.getPlayer(sender.name)?.location!!,Sound.ENTITY_ITEM_PICKUP,1.0f,1.0f)
+                        Bukkit.getPlayer(sender.name)
+                            ?.playSound(Bukkit.getPlayer(sender.name)?.location!!, Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f)
                         return false
-                    }else{
+                    } else {
                         sender.sendMessage("そのプレイヤーはオフラインです。")
                     }
-                }else{
-                    sender.sendMessage("そのプレイヤーはオフラインです。")
                 }
 
                 if (sender.isOp) {
@@ -1644,7 +2054,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val player: OfflinePlayer = Bukkit.getOfflinePlayer(args[1])
                             if (player.isOnline) {
                                 setxp(player.player!!, getxp(player.player!!) + Integer.valueOf(args[2]))
-                                checkrankup(player.player!!,getrank(player.player!!), getxp(player.player!!))
+                                checkrankup(player.player!!, getrank(player.player!!), getxp(player.player!!))
                                 changedisplayname(Bukkit.getPlayer(sender.name)!!)
                             } else {
                                 sender.sendMessage("${ChatColor.RED}そのプレイヤーはオフラインです。")
@@ -1658,7 +2068,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             val player: OfflinePlayer = Bukkit.getOfflinePlayer(args[1])
                             if (player.isOnline) {
                                 setxp(player.player!!, getxp(player.player!!) - Integer.valueOf(args[2]))
-                                checkrankup(player.player!!,getrank(player.player!!), getxp(player.player!!))
+                                checkrankup(player.player!!, getrank(player.player!!), getxp(player.player!!))
                                 changedisplayname(Bukkit.getPlayer(sender.name)!!)
                             } else {
                                 sender.sendMessage("${ChatColor.RED}そのプレイヤーはオフラインです。")
@@ -1669,35 +2079,36 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             }
 
             "start" -> {
-                if (sender.isOp) {
-                    when (args[1]) {
-                        "/y"->
-                        if (Bukkit.getOnlinePlayers().size > 2) {
-                            startsec = 10
-                            min = 0
-                            Bukkit.getWorld("world")?.time = 0
-                            autowarifuri()
-
-                        } else {
-                            sender.sendMessage("${ChatColor.RED}You must have at least 3 online players to start")
-                        }
-                        "/n"->{
+                if (sender.isOp && args.isNotEmpty()) {
+                    when (args[0]) {
+                        "/y" ->
                             if (Bukkit.getOnlinePlayers().size > 2) {
                                 startsec = 10
                                 min = 0
                                 Bukkit.getWorld("world")?.time = 0
+                                autowarifuri()
+                                Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
+
+                            } else {
+                                sender.sendMessage("${ChatColor.RED}You must have at least 3 online players to start")
+                            }
+
+                        "/n" -> {
+                            if (Bukkit.getOnlinePlayers().size > 2) {
+                                startsec = 10
+                                min = 0
+                                Bukkit.getWorld("world")?.time = 0
+                                Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
 
                             } else {
                                 sender.sendMessage("${ChatColor.RED}You must have at least 3 online players to start")
                             }
                         }
-                        else->{
-                            sender.sendMessage("${ChatColor.RED}コマンドが不完全です。\n/start [/y or /n]")
-                        }
+
                     }
 
                     val location =
-                        Bukkit.getPlayer(sender.name)?.world?.locateNearestStructure(
+                        Bukkit.getWorld("world")?.locateNearestStructure(
                             Bukkit.getPlayer(sender.name)!!.location,
                             StructureType.STRONGHOLD,
                             90000,
@@ -1713,6 +2124,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
 
                     Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
 
+                } else {
+                    sender.sendMessage("${ChatColor.RED}コマンドが不完全です。\n/start [/y or /n]")
                 }
             }
 
@@ -1722,10 +2135,10 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                     autowarifuri()
                     Bukkit.getWorld("world")?.time = 0
                     val location =
-                        Bukkit.getPlayer(sender.name)?.world?.locateNearestStructure(
+                        Bukkit.getWorld("world")?.locateNearestStructure(
                             Bukkit.getPlayer(sender.name)!!.location,
                             StructureType.STRONGHOLD,
-                            32,
+                            90000,
                             false
                         )
                     if (location == null) {
@@ -1733,8 +2146,8 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                     } else {
                         yousaix = location.blockX
                         yousaiz = location.blockZ
-                        Bukkit.getWorld("world")?.worldBorder?.setCenter(0.0, 0.0)
-                        Bukkit.getWorld("world")?.worldBorder?.size = 20.0
+                        Bukkit.getWorld("world")?.setSpawnLocation(0, 200, 0)
+
                     }
 
 
@@ -1799,8 +2212,12 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         object : BukkitRunnable() {
             override fun run() {
                 for (player in Bukkit.getOnlinePlayers()) {
-                    player.playerListHeader = ("${ChatColor.YELLOW}レベルアップまで残り${getrankupremaining(getrank(player),getxp(player))}")
+                    player.playerListHeader =
+                        ("${ChatColor.YELLOW}レベルアップまで残り${getrankupremaining(getrank(player), getxp(player))}")
                     changedisplayname(player)
+                    if (teleportcooldown[player.uniqueId]?: 0 > 0&&teleportcooldown[player.uniqueId] != null ){
+                        teleportcooldown[player.uniqueId] = teleportcooldown[player.uniqueId]?.minus(1) ?:  1
+                    }
                 }
 
 
@@ -1808,6 +2225,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 when (gamestart) {
                     0 -> {
                         prescoreboard()
+
                         for (player in Bukkit.getOnlinePlayers()) {
                             player.foodLevel = 20
                             player.health = 40.0
@@ -1881,19 +2299,20 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
 
                                 all.inventory.setItem(4, ItemStack(Material.BREAD, 64))
                             }
-                            for (x in -10..10) {
-                                for (z in -10..10) {
-                                    val block = Bukkit.getWorld("world")?.getBlockAt(x, 148, z)
-                                    val setblock = Material.getMaterial("GLASS")!!.createBlockData()
-                                    block?.blockData = setblock
-                                }
-                            }
-                            for (player in board?.getTeam("hunter")!!.entries) {
+                            for (player in board?.getTeam("survivor")!!.entries) {
                                 Bukkit.getPlayer(player)?.teleport(Location(Bukkit.getWorld("world"), 0.5, 150.0, 0.5))
+                                Bukkit.getPlayer(player)?.gameMode = GameMode.SURVIVAL
+                                Bukkit.getPlayer(player)?.addPotionEffect(
+                                    PotionEffect(
+                                        PotionEffectType.DAMAGE_RESISTANCE,
+                                        1200,
+                                        6,
+                                        true
+                                    )
+                                )
                             }
                             for (player in Bukkit.getOnlinePlayers()) {
                                 player.playSound(player.location, Sound.ENTITY_WITHER_SPAWN, 1.0F, 1.0F)
-                                Bukkit.getWorld("world")?.worldBorder?.size = 2147483647.0
                                 val compass = ItemStack(Material.COMPASS)
                                 val metadatacompass = compass.itemMeta
                                 metadatacompass?.isUnbreakable = true
@@ -1920,24 +2339,20 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             min++
                         }
                         if (hour == 0 && min == 3 && sec == 0) {
-                            for (x in -10..10) {
-                                for (z in -10..10) {
-                                    val block = Bukkit.getWorld("world")?.getBlockAt(x, 148, z)
-                                    val setblock = Material.getMaterial("AIR")!!.createBlockData()
-                                    block?.blockData = setblock
-                                    for (player in board?.getTeam("hunter")!!.entries) {
-                                        Bukkit.getPlayer(player)?.addPotionEffect(
-                                            PotionEffect(
-                                                PotionEffectType.DAMAGE_RESISTANCE,
-                                                1200,
-                                                6,
-                                                true
-                                            )
-                                        )
-                                    }
-
-
-                                }
+                            val block = Bukkit.getWorld("world")?.getBlockAt(0, 148, 0)
+                            val setblock = Material.getMaterial("BEDROCK")!!.createBlockData()
+                            block?.blockData = setblock
+                            for (player in board?.getTeam("hunter")!!.entries) {
+                                Bukkit.getPlayer(player)?.teleport(Location(Bukkit.getWorld("world"), 0.5, 150.0, 0.5))
+                                Bukkit.getPlayer(player)?.gameMode = GameMode.SURVIVAL
+                                Bukkit.getPlayer(player)?.addPotionEffect(
+                                    PotionEffect(
+                                        PotionEffectType.DAMAGE_RESISTANCE,
+                                        1200,
+                                        6,
+                                        true
+                                    )
+                                )
                             }
                             for (player in Bukkit.getOnlinePlayers()) {
                                 player.playSound(player.location, Sound.ENTITY_WITHER_AMBIENT, 1.0f, 2.0f)
@@ -1956,7 +2371,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 player.sendMessage("${ChatColor.GOLD}----------------------------------")
                                 player.sendMessage("${ChatColor.GOLD}  満腹度が減るようになりました。")
                                 player.sendMessage("${ChatColor.GOLD}----------------------------------")
-                                player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 2.0f)
+                                player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f)
                             }
                         }
                         if (hour == 1 && min == 0 && sec == 0 || hour == 1 && min == 10 && sec == 0 || hour == 1 && min == 20 && sec == 0 ||
@@ -1997,12 +2412,12 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                             if (blocks[all.uniqueId] == 123456789) {
                                 val component = TextComponent()
                                 component.text =
-                                    "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: 残り?マス"
+                                    "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: 残り?マス ${ChatColor.GOLD}スキル${ChatColor.GRAY}: ${teleportcooldown[all.uniqueId]}"
                                 all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
                             } else {
                                 val component = TextComponent()
                                 component.text =
-                                    "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: 残り${blocks[all.uniqueId]}マス"
+                                    "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: 残り${blocks[all.uniqueId]}マス  ${ChatColor.GOLD}スキル${ChatColor.GRAY}: ${teleportcooldown[all.uniqueId]}"
                                 all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
                             }
                         } else {
@@ -2017,7 +2432,6 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}${trackplayer[all.uniqueId]}: ${ChatColor.RED}${ChatColor.UNDERLINE}ここにはいません"
                             all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
                         }
-
                     } else if (all.scoreboard.getEntryTeam(all.name)?.name == "survivor") {
                         if (blocks[all.uniqueId] == 123456789) {
                             val component = TextComponent()
@@ -2030,6 +2444,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ} ${ChatColor.GREEN}残り${blocks[all.uniqueId]}マス"
                             all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
                         }
+                    }else{
+                        val component = TextComponent()
+                        component.text =
+                            "${ChatColor.YELLOW}現在の座標: ${all.location.blockX} ${all.location.blockY} ${all.location.blockZ}"
+                        all.spigot().sendMessage(ChatMessageType.ACTION_BAR, component)
                     }
                 }
                 when (gamestart) {
@@ -2054,7 +2473,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
 
                             }
                             for (player1 in board?.getTeam("hunter")!!.entries) {
-                                setxp(Bukkit.getPlayer(player1)!!,getxp(Bukkit.getPlayer(player1)!!)+25)
+                                addxp(Bukkit.getPlayer(player1)!!, 25)
                                 Bukkit.getPlayer(player1)?.sendMessage("${ChatColor.GOLD}+25Xp")
                             }
                             end()
@@ -2068,11 +2487,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
 
                             }
                             for (player1 in board?.getTeam("hunter")!!.entries) {
-                                setxp(Bukkit.getPlayer(player1)!!,getxp(Bukkit.getPlayer(player1)!!)+50)
+                                setxp(Bukkit.getPlayer(player1)!!, getxp(Bukkit.getPlayer(player1)!!) + 50)
                                 Bukkit.getPlayer(player1)?.sendMessage("${ChatColor.GOLD}+50Xp")
                             }
                             for (player2 in board?.getTeam("survivor")!!.entries) {
-                                setxp(Bukkit.getPlayer(player2)!!,getxp(Bukkit.getPlayer(player2)!!)+25)
+                                setxp(Bukkit.getPlayer(player2)!!, getxp(Bukkit.getPlayer(player2)!!) + 25)
                                 Bukkit.getPlayer(player2)?.sendMessage("${ChatColor.GOLD}+25Xp")
                             }
                             end()
@@ -2083,14 +2502,13 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                                 player.sendMessage("${ChatColor.GOLD}--------------------------------\n試合終了!\n${ChatColor.YELLOW}エンダードラゴンを倒したため、生存者の勝利です。${ChatColor.GOLD}--------------------------------\n")
                                 cancel()
                                 gamestart = 2
-
                             }
                             for (player1 in board?.getTeam("survivor")!!.entries) {
-                                setxp(Bukkit.getPlayer(player1)!!,getxp(Bukkit.getPlayer(player1)!!)+100)
+                                setxp(Bukkit.getPlayer(player1)!!, getxp(Bukkit.getPlayer(player1)!!) + 100)
                                 Bukkit.getPlayer(player1)?.sendMessage("${ChatColor.GOLD}+100Xp")
                             }
                             for (player2 in board?.getTeam("hunter")!!.entries) {
-                                setxp(Bukkit.getPlayer(player2)!!,getxp(Bukkit.getPlayer(player2)!!)+50)
+                                setxp(Bukkit.getPlayer(player2)!!, getxp(Bukkit.getPlayer(player2)!!) + 50)
                                 Bukkit.getPlayer(player2)?.sendMessage("${ChatColor.GOLD}+50Xp")
                             }
                             end()
@@ -2105,7 +2523,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         Bukkit.getScoreboardManager()?.mainScoreboard?.getObjective("pre")?.unregister()
         val prescore = Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("pre", "Dummy", "aaa")
         prescore?.displayName =
-            "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.0.0"
+            "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.1.0"
         prescore?.displaySlot = DisplaySlot.SIDEBAR
         prescore?.getScore("${ChatColor.GOLD}サーバー人数: ${Bukkit.getOnlinePlayers().size}")?.score = 0
     }
@@ -2135,7 +2553,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                     Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
 
                 prescore?.displayName =
-                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.0.0"
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.1.0"
                 prescore?.displaySlot = DisplaySlot.SIDEBAR
                 prescore?.getScore("${ChatColor.GREEN}残り人数: $survivorplayer")?.score = 11
                 prescore?.getScore("${ChatColor.RED}ハンター: $hunterplayer")?.score = 10
@@ -2231,7 +2649,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                     Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
 
                 prescore?.displayName =
-                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.0.0"
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.1.0"
                 prescore?.displaySlot = DisplaySlot.SIDEBAR
                 prescore?.getScore("${ChatColor.YELLOW}${ChatColor.UNDERLINE}残り人数: $arplayer")?.score = 0
                 for (a in Bukkit.getOnlinePlayers()) {
@@ -2253,12 +2671,13 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                         }
                     }
                     Bukkit.broadcastMessage("${ChatColor.GOLD}${winner}が優勝しました。")
-                    Bukkit.getPlayer(winner)?.gameMode = GameMode.CREATIVE
-                    Bukkit.getWorld("world")?.worldBorder?.size = 99999999.9
 
                     for (p in Bukkit.getOnlinePlayers()) {
                         p.playSound(p.location, Sound.ENTITY_GENERIC_EXPLODE, 1f, 1.0f)
                         p.playSound(p.location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1f, 1.0f)
+
+                        p?.gameMode = GameMode.ADVENTURE
+                        p?.allowFlight = true
                     }
                     gamestart = 3
                 }
@@ -2270,7 +2689,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                     Bukkit.getScoreboardManager()?.mainScoreboard?.registerNewObjective("game", "Dummy", "game")
 
                 prescore?.displayName =
-                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.0.0"
+                    "${ChatColor.DARK_PURPLE}${ChatColor.BOLD}${ChatColor.ITALIC}Manhunt ${ChatColor.GRAY}5.1.0"
                 prescore?.displaySlot = DisplaySlot.SIDEBAR
                 prescore?.getScore("${ChatColor.YELLOW}${ChatColor.UNDERLINE}サーバー停止まで: $serverre")?.score = 0
                 if (serverre == 0) {
@@ -2324,7 +2743,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         object : BukkitRunnable() {
             override fun run() {
                 for (player in Bukkit.getOnlinePlayers()) {
-                    player.teleport(Location(Bukkit.getWorld("world"), 0.5, 150.0, 0.5))
+                    player.teleport(Location(arena,17.5,12.00,11.5))
 
                 }
                 for (player in board?.getTeam("hunter")!!.entries) {
@@ -2340,14 +2759,14 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 for (player in board?.getTeam("arrive")!!.entries) {
                     Bukkit.getPlayer(player)
                         ?.addPotionEffect(PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 200, 6, false))
+                    Bukkit.getPlayer(player)?.gameMode = GameMode.ADVENTURE
                 }
-                Bukkit.getWorld("world")?.worldBorder?.size = 100.0
 
             }
         }.runTaskLater(this, 200L)
     }
 
-    private fun existplayerdata(player: Player): Boolean {
+    private fun existplayerdata(player: OfflinePlayer): Boolean {
         val file = File("" + this.dataFolder + "/player-data/", player.uniqueId.toString() + ".yml")
         return file.exists()
     }
@@ -2374,7 +2793,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         }
     }
 
-    private fun getplayerdata(player: Player): File? {
+    private fun getplayerdata(player: OfflinePlayer): File? {
         return if (existplayerdata(player)) {
             File("" + this.dataFolder + "/player-data/", player.uniqueId.toString() + ".yml")
         } else {
@@ -2382,7 +2801,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         }
     }
 
-    private fun getrank(player: Player): Int {
+    private fun getrank(player: OfflinePlayer): Int {
         val file = getplayerdata(player)
         val config = file?.let { YamlConfiguration.loadConfiguration(it) }
 
@@ -2418,10 +2837,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         }
         checkrankup(player, getrank(player), getxp(player))
     }
+
     private fun addxp(player: Player, addxp: Int) {
         val file = getplayerdata(player)
         val config = file?.let { YamlConfiguration.loadConfiguration(it) }
-        config?.set("xp", getxp(player)+addxp)
+        config?.set("xp", getxp(player) + addxp)
         try {
             config?.save(file)
         } catch (e: IOException) {
@@ -2430,7 +2850,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
         checkrankup(player, getrank(player), getxp(player))
     }
 
-    private fun getkills(player: Player): Int {
+    private fun getkills(player: OfflinePlayer): Int {
         val file = getplayerdata(player)
         val config = file?.let { YamlConfiguration.loadConfiguration(it) }
 
@@ -2505,7 +2925,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             in 4..9 -> {
                 if (xp >= 90) {
                     setrank(player, getrank(player) + 1)
-                    setxp(player, getxp(player) - 50)
+                    setxp(player, getxp(player) - 90)
                     player.sendMessage(
                         "${ChatColor.GOLD}${ChatColor.MAGIC} a ${ChatColor.RESET}${ChatColor.YELLOW}${ChatColor.UNDERLINE}★${
                             getrank(
@@ -2522,7 +2942,7 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             in 10..14 -> {
                 if (xp >= 150) {
                     setrank(player, getrank(player) + 1)
-                    setxp(player, getxp(player) - 100)
+                    setxp(player, getxp(player) - 150)
                     player.sendMessage(
                         "${ChatColor.GOLD}${ChatColor.MAGIC} a ${ChatColor.RESET}${ChatColor.YELLOW}${ChatColor.UNDERLINE}★${
                             getrank(
@@ -2626,97 +3046,198 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
     private fun changedisplayname(player: Player) {
         if (player.scoreboard.getEntryTeam(player.name)?.name == "hunter") {
             val p = "${ChatColor.RED}${player.name}"
-            when (getrank(player)){
-                in 0..5->{
+            when (getrank(player)) {
+                in 0..5 -> {
                     player.setDisplayName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                 }
-                in 6..10->{
+
+                in 6..10 -> {
                     player.setDisplayName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                 }
-                in 11..20->{
+
+                in 11..20 -> {
                     player.setDisplayName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
                 }
-                in 21..30->{
+
+                in 21..30 -> {
                     player.setDisplayName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                 }
-                in 31..40->{
+
+                in 31..40 -> {
                     player.setDisplayName("${ChatColor.RED}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.RED}[★${getrank(player)}] $p")
                 }
-                in 41..50->{
+
+                in 41..50 -> {
                     player.setDisplayName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                 }
-                in 51..99999->{
+
+                in 51..99999 -> {
                     player.setDisplayName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                 }
             }
 
-        }
-        else if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor") {
+        } else if (player.scoreboard.getEntryTeam(player.name)?.name == "survivor") {
             val p = "${ChatColor.GREEN}${player.name}"
-            when (getrank(player)){
-                in 0..5->{
+            when (getrank(player)) {
+                in 0..5 -> {
                     player.setDisplayName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                 }
-                in 6..10->{
+
+                in 6..10 -> {
                     player.setDisplayName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                 }
-                in 11..20->{
+
+                in 11..20 -> {
+                    player.setDisplayName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                }
+
+                in 21..30 -> {
                     player.setDisplayName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                 }
-                in 21..30->{
+
+                in 31..40 -> {
                     player.setDisplayName("${ChatColor.RED}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.RED}[★${getrank(player)}] $p")
                 }
-                in 31..40->{
+
+                in 41..50 -> {
                     player.setDisplayName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                 }
-                in 41..50->{
+
+                in 51..99999 -> {
                     player.setDisplayName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                 }
             }
 
-        }else{
-            val p = "${ChatColor.WHITE}${player.name}"
-            when (getrank(player)){
-                in 0..5->{
+        } else if (player.scoreboard.getEntryTeam(player.name)?.name == "arrive") {
+            val p = "${ChatColor.LIGHT_PURPLE}${player.name}"
+            when (getrank(player)) {
+                in 0..5 -> {
                     player.setDisplayName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GRAY}[★${getrank(player)}] $p")
                 }
-                in 6..10->{
+
+                in 6..10 -> {
                     player.setDisplayName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.BLUE}[★${getrank(player)}] $p")
                 }
-                in 11..20->{
+
+                in 11..20 -> {
+                    player.setDisplayName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                }
+
+                in 21..30 -> {
                     player.setDisplayName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.AQUA}[★${getrank(player)}] $p")
                 }
-                in 21..30->{
+
+                in 31..40 -> {
                     player.setDisplayName("${ChatColor.RED}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.RED}[★${getrank(player)}] $p")
                 }
-                in 31..40->{
+
+                in 41..50 -> {
                     player.setDisplayName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
                 }
-                in 41..50->{
+
+                in 51..99999 -> {
+                    player.setDisplayName("${ChatColor.GOLD}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.GOLD}[★${getrank(player)}] $p")
+                }
+            }
+        } else if (player.scoreboard.getEntryTeam(player.name)?.name == "deathed") {
+            val p = "${ChatColor.GRAY}${player.name}"
+            when (getrank(player)) {
+                in 0..5 -> {
+                    player.setDisplayName("${ChatColor.GRAY}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.GRAY}[★${getrank(player)}] $p")
+                }
+
+                in 6..10 -> {
+                    player.setDisplayName("${ChatColor.BLUE}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.BLUE}[★${getrank(player)}] $p")
+                }
+
+                in 11..20 -> {
+                    player.setDisplayName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                }
+
+                in 21..30 -> {
+                    player.setDisplayName("${ChatColor.AQUA}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.AQUA}[★${getrank(player)}] $p")
+                }
+
+                in 31..40 -> {
+                    player.setDisplayName("${ChatColor.RED}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.RED}[★${getrank(player)}] $p")
+                }
+
+                in 41..50 -> {
+                    player.setDisplayName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
+                }
+
+                in 51..99999 -> {
+                    player.setDisplayName("${ChatColor.GOLD}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.GOLD}[★${getrank(player)}] $p")
+                }
+            }
+        } else{
+            val p = "${ChatColor.WHITE}${player.name}"
+            when (getrank(player)) {
+                in 0..5 -> {
+                    player.setDisplayName("${ChatColor.GRAY}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.GRAY}[★${getrank(player)}] $p")
+                }
+
+                in 6..10 -> {
+                    player.setDisplayName("${ChatColor.BLUE}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.BLUE}[★${getrank(player)}] $p")
+                }
+
+                in 11..20 -> {
+                    player.setDisplayName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.DARK_GREEN}[★${getrank(player)}] $p")
+                }
+
+                in 21..30 -> {
+                    player.setDisplayName("${ChatColor.AQUA}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.AQUA}[★${getrank(player)}] $p")
+                }
+
+                in 31..40 -> {
+                    player.setDisplayName("${ChatColor.RED}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.RED}[★${getrank(player)}] $p")
+                }
+
+                in 41..50 -> {
+                    player.setDisplayName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
+                    player.setPlayerListName("${ChatColor.YELLOW}[★${getrank(player)}] $p")
+                }
+
+                in 51..99999 -> {
                     player.setDisplayName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                     player.setPlayerListName("${ChatColor.GOLD}[★${getrank(player)}] $p")
                 }
             }
         }
-        
+
     }
 
     private fun getrankupremaining(rank: Int, xp: Int): Int {
@@ -2734,11 +3255,11 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
             }
 
             in 4..9 -> {
-                return Integer.parseInt((50 - xp).toString())
+                return Integer.parseInt((90 - xp).toString())
             }
 
             in 10..14 -> {
-                return Integer.parseInt((100 - xp).toString())
+                return Integer.parseInt((150 - xp).toString())
             }
 
             in 15..19 -> {
@@ -2762,21 +3283,267 @@ class Minecrafthunters : JavaPlugin() , Listener, CommandExecutor,Plugin {
                 return Integer.parseInt((750 - xp).toString())
 
             }
-            else->{
+
+            else -> {
                 return Integer.parseInt("?")
             }
         }
     }
+    private fun reloadleaderboard(){
+        val killlist = mutableListOf<Int>()
+        val ranklist = mutableListOf<Int>()
+        val leaderranking: MutableMap<Int?, String> = TreeMap { m: Int?, n: Int? -> m!!.compareTo(n!!) * -1 }
+        Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "execute in minecraft:lobby as @e[type=minecraft:armor_stand] run kill @s")
+        for (player in Bukkit.getOfflinePlayers()) {
+            leaderkills[player.name!!] = getkills(player)
+            leaderrank[player.name!!] = getrank(player)
+            killlist.add(getkills(player))
+            ranklist.add(getrank(player))
+        }
+        killlist.sort()
+        killlist.reverse()
+        ranklist.sort()
+        ranklist.reverse()
+
+        for (i in 0.. killlist.size-1){
+
+            val name = killlist[i]
+            val playername = Bukkit.getOfflinePlayer((leaderranking[name].toString())).name
+            val b = i+1
+
+            Bukkit.broadcastMessage("${ChatColor.YELLOW} ${leaderboardkill[b]} $playername")
+            for (name1 in leaderkills.keys) {
+                Bukkit.broadcastMessage("${ChatColor.RED} ${leaderkills[name1]} ${name1} ")
+                leaderranking[leaderkills[name1]] = name1.toString()
+                Bukkit.broadcastMessage("${ChatColor.RED} ${leaderkills[name1]} ${name1} ")
+
+            }
+            leaderboardkill[b] = leaderranking[name].toString()
+            Bukkit.broadcastMessage("${ChatColor.DARK_GREEN}${leaderranking} ${ChatColor.GOLD} ${leaderranking[name]} ${ChatColor.AQUA}$killlist ${ChatColor.GREEN}$i ${ChatColor.LIGHT_PURPLE}${killlist[i]}")
+
+        }
+//            for (player1 in Bukkit.getOfflinePlayers()) {
+//                var i = 1
+//                for (nKey in leaderranking.keys) {
+//
+//                    val playername = Bukkit.getOfflinePlayer((leaderranking[nKey].toString())).name
+//
+//                    leaderboardkill[i] = playername.toString()
+//                    i += 1
+//                }
+//            }
 
 
 
-    private fun resetcoins(player:Player){
+            val rankleaderranking: MutableMap<Int?, String> = TreeMap { m: Int?, n: Int? -> m!!.compareTo(n!!) * -1 }
+
+            for (name in leaderrank.keys) {
+                rankleaderranking[leaderrank[name]] = name.toString()
+            }
+            for (player1 in Bukkit.getOfflinePlayers()) {
+                var i = 1
+                for (nKey in rankleaderranking.keys) {
+                    val playername = Bukkit.getOfflinePlayer((rankleaderranking[nKey].toString())).name
+
+                    leaderboardrank[i] = playername.toString()
+                    i += 1
+                }
+            }
+
+//        val killboardtitle = lobby?.spawnEntity(Location(lobby,-1515.5,115.00,683.5),EntityType.ARMOR_STAND)
+//        killboardtitle?.setGravity(false)
+//        killboardtitle?.customName = "${ChatColor.RED}${ChatColor.UNDERLINE}キルランキング"
+//        killboardtitle?.isCustomNameVisible = true
+//        killboardtitle?.isInvulnerable = false
+        val leaderboardtitle1 = lobby!!.spawn(Location(lobby,-6.5,20.00,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtitle1.setGravity(false)
+            leaderboardtitle1.isSmall = true
+            leaderboardtitle1.isVisible = false
+            leaderboardtitle1.customName = "${ChatColor.RED}${ChatColor.UNDERLINE}キルランキング ※同じ数値の人がいると一人しか表示されません"
+            leaderboardtitle1.isCustomNameVisible = true
+        }
+        val leaderboardtext1 = lobby.spawn(Location(lobby,-6.5,19.50,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext1.setGravity(false)
+            leaderboardtext1.isSmall = true
+            leaderboardtext1.isVisible = false
+            leaderboardtext1.customName = "${ChatColor.GOLD}1位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[1]} ${ChatColor.RED}${leaderkills[leaderboardkill[1]]}"
+            leaderboardtext1.isCustomNameVisible = true
+        }
+        val leaderboardtext2 = lobby.spawn(Location(lobby,-6.5,19.0,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext2.setGravity(false)
+            leaderboardtext2.isSmall = true
+            leaderboardtext2.isVisible = false
+            leaderboardtext2.customName = "${ChatColor.GRAY}2位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[2]} ${ChatColor.RED}${leaderkills[leaderboardkill[2]]}"
+            leaderboardtext2.isCustomNameVisible = true
+        }
+        val leaderboardtext3 = lobby.spawn(Location(lobby,-6.5,18.50,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext3.setGravity(false)
+            leaderboardtext3.isSmall = true
+            leaderboardtext3.isVisible = false
+            leaderboardtext3.customName = "${ChatColor.AQUA}3位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[3]} ${ChatColor.RED}${leaderkills[leaderboardkill[3]]}"
+            leaderboardtext3.isCustomNameVisible = true
+        }
+        val leaderboardtext4 = lobby.spawn(Location(lobby,-6.5,18.00,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext4.setGravity(false)
+            leaderboardtext4.isSmall = true
+            leaderboardtext4.isVisible = false
+            leaderboardtext4.customName = "${ChatColor.YELLOW}4位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[4]} ${ChatColor.RED}${leaderkills[leaderboardkill[4]]}"
+            leaderboardtext4.isCustomNameVisible = true
+        }
+        val leaderboardtext5 = lobby.spawn(Location(lobby,-6.5,17.50,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext5.setGravity(false)
+            leaderboardtext5.isSmall = true
+            leaderboardtext5.isVisible = false
+            leaderboardtext5.customName = "${ChatColor.YELLOW}5位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[5]} ${ChatColor.RED}${leaderkills[leaderboardkill[5]]}"
+            leaderboardtext5.isCustomNameVisible = true
+        }
+        val leaderboardtext6 = lobby.spawn(Location(lobby,-6.5,17.00,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext6.setGravity(false)
+            leaderboardtext6.isSmall = true
+            leaderboardtext6.isVisible = false
+            leaderboardtext6.customName = "6位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[6]} ${ChatColor.RED}${leaderkills[leaderboardkill[6]]}"
+            leaderboardtext6.isCustomNameVisible = true
+        }
+        val leaderboardtext7 = lobby.spawn(Location(lobby,-6.5,16.50,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext7.setGravity(false)
+            leaderboardtext7.isSmall = true
+            leaderboardtext7.isVisible = false
+            leaderboardtext7.customName = "7位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[7]} ${ChatColor.RED}${leaderkills[leaderboardkill[7]]}"
+            leaderboardtext7.isCustomNameVisible = true
+        }
+        val leaderboardtext8 = lobby.spawn(Location(lobby,-6.5,16.00,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext8.setGravity(false)
+            leaderboardtext8.isSmall = true
+            leaderboardtext8.isVisible = false
+            leaderboardtext8.customName = "8位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[8]} ${ChatColor.RED}${leaderkills[leaderboardkill[8]]}"
+            leaderboardtext8.isCustomNameVisible = true
+        }
+        val leaderboardtext9 = lobby.spawn(Location(lobby,-6.5,15.50,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext9.setGravity(false)
+            leaderboardtext9.isSmall = true
+            leaderboardtext9.isVisible = false
+            leaderboardtext9.customName = "9位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[9]} ${ChatColor.RED}${leaderkills[leaderboardkill[9]]}"
+            leaderboardtext9.isCustomNameVisible = true
+        }
+        val leaderboardtext10 = lobby.spawn(Location(lobby,-6.5,15.00,0.5), ArmorStand::class.java)
+        run {
+            leaderboardtext10.setGravity(false)
+            leaderboardtext10.isSmall = true
+            leaderboardtext10.isVisible = false
+            leaderboardtext10.customName = "10位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardkill[10]} ${ChatColor.RED}${leaderkills[leaderboardkill[10]]}"
+            leaderboardtext10.isCustomNameVisible = true
+        }
+
+
+
+
+
+        val rankleaderboardtitle1 = lobby.spawn(Location(lobby,7.5,20.00,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtitle1.setGravity(false)
+            rankleaderboardtitle1.isSmall = true
+            rankleaderboardtitle1.isVisible = false
+            rankleaderboardtitle1.customName = "${ChatColor.GOLD}${ChatColor.UNDERLINE}ランクランキング ※同じ数値の人がいると一人しか表示されません"
+            rankleaderboardtitle1.isCustomNameVisible = true
+        }
+        val rankleaderboardtext1 = lobby.spawn(Location(lobby,7.5,19.50,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext1.setGravity(false)
+            rankleaderboardtext1.isSmall = true
+            rankleaderboardtext1.isVisible = false
+            rankleaderboardtext1.customName = "${ChatColor.GOLD}1位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[1]} ${ChatColor.RED}${leaderrank[leaderboardrank[1]]}"
+            rankleaderboardtext1.isCustomNameVisible = true
+        }
+        val rankleaderboardtext2 = lobby.spawn(Location(lobby,7.5,19.0,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext2.setGravity(false)
+            rankleaderboardtext2.isSmall = true
+            rankleaderboardtext2.isVisible = false
+            rankleaderboardtext2.customName = "${ChatColor.GRAY}2位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[2]} ${ChatColor.RED}${leaderrank[leaderboardrank[2]]}"
+            rankleaderboardtext2.isCustomNameVisible = true
+        }
+        val rankleaderboardtext3 = lobby.spawn(Location(lobby,7.5,18.50,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext3.setGravity(false)
+            rankleaderboardtext3.isSmall = true
+            rankleaderboardtext3.isVisible = false
+            rankleaderboardtext3.customName = "${ChatColor.AQUA}3位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[3]} ${ChatColor.RED}${leaderrank[leaderboardrank[3]]}"
+            rankleaderboardtext3.isCustomNameVisible = true
+        }
+        val rankleaderboardtext4 = lobby.spawn(Location(lobby,7.5,18.00,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext4.setGravity(false)
+            rankleaderboardtext4.isSmall = true
+            rankleaderboardtext4.isVisible = false
+            rankleaderboardtext4.customName = "${ChatColor.YELLOW}4位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[4]} ${ChatColor.RED}${leaderrank[leaderboardrank[4]]}"
+            rankleaderboardtext4.isCustomNameVisible = true
+        }
+        val rankleaderboardtext5 = lobby.spawn(Location(lobby,7.5,17.50,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext5.setGravity(false)
+            rankleaderboardtext5.isSmall = true
+            rankleaderboardtext5.isVisible = false
+            rankleaderboardtext5.customName = "${ChatColor.YELLOW}5位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[5]} ${ChatColor.RED}${leaderrank[leaderboardrank[5]]}"
+            rankleaderboardtext5.isCustomNameVisible = true
+        }
+        val rankleaderboardtext6 = lobby.spawn(Location(lobby,7.5,17.00,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext6.setGravity(false)
+            rankleaderboardtext6.isSmall = true
+            rankleaderboardtext6.isVisible = false
+            rankleaderboardtext6.customName = "6位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[6]} ${ChatColor.RED}${leaderrank[leaderboardrank[6]]}"
+            rankleaderboardtext6.isCustomNameVisible = true
+        }
+        val rankleaderboardtext7 = lobby.spawn(Location(lobby,7.5,16.50,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext7.setGravity(false)
+            rankleaderboardtext7.isSmall = true
+            rankleaderboardtext7.isVisible = false
+            rankleaderboardtext7.customName = "7位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[7]} ${ChatColor.RED}${leaderrank[leaderboardrank[7]]}"
+            rankleaderboardtext7.isCustomNameVisible = true
+        }
+        val rankleaderboardtext8 = lobby.spawn(Location(lobby,7.5,16.00,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext8.setGravity(false)
+            rankleaderboardtext8.isSmall = true
+            rankleaderboardtext8.isVisible = false
+            rankleaderboardtext8.customName = "8位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[8]} ${ChatColor.RED}${leaderrank[leaderboardrank[8]]}"
+            rankleaderboardtext8.isCustomNameVisible = true
+        }
+        val rankleaderboardtext9 = lobby.spawn(Location(lobby,7.5,15.50,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext9.setGravity(false)
+            rankleaderboardtext9.isSmall = true
+            rankleaderboardtext9.isVisible = false
+            rankleaderboardtext9.customName = "9位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[9]} ${ChatColor.RED}${leaderrank[leaderboardrank[9]]}"
+            rankleaderboardtext9.isCustomNameVisible = true
+        }
+        val rankleaderboardtext10 = lobby.spawn(Location(lobby,7.5,15.00,0.5), ArmorStand::class.java)
+        run {
+            rankleaderboardtext10.setGravity(false)
+            rankleaderboardtext10.isSmall = true
+            rankleaderboardtext10.isVisible = false
+            rankleaderboardtext10.customName = "10位 ${ChatColor.GREEN}: ${ChatColor.RESET}${leaderboardrank[10]} ${ChatColor.RED}${leaderrank[leaderboardrank[10]]}"
+            rankleaderboardtext10.isCustomNameVisible = true
+        }
+    }
+    private fun resetcoins(player: Player) {
         val file = getplayerdata(player)
         val config = file?.let { YamlConfiguration.loadConfiguration(it) }
-        config?.set("coins",0)
+        config?.set("coins", 0)
         try {
             config?.save(file)
-        }catch (e:IOException){
+        } catch (e: IOException) {
             e.printStackTrace()
         }
 
